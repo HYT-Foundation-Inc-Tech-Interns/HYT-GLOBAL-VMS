@@ -169,6 +169,7 @@ describe('fetchOrientationStatus', () => {
 
 describe('verifyVisitor', () => {
   const record = {
+    id: '22222222-2222-2222-2222-222222222222',
     orientation_status: 'approved' as const,
     full_name: 'Gemmalyn Ocbina Aranda',
     programme: 'Barista NC II',
@@ -183,7 +184,8 @@ describe('verifyVisitor', () => {
 
   test('found: returns the record for a matching name and course', async () => {
     const out = await verifyVisitor(
-      'Gemmalyn Ocbina Aranda',
+      'Gemmalyn',
+      'Aranda',
       COURSE,
       stub(() => Promise.resolve({ data: [record], error: null }))
     );
@@ -196,7 +198,8 @@ describe('verifyVisitor', () => {
     // the address on file. If the UI could ever pass an address through to
     // signInWithOtp, whoever held the phone could redirect a stranger's link.
     const out = await verifyVisitor(
-      'Gemmalyn Ocbina Aranda',
+      'Gemmalyn',
+      'Aranda',
       COURSE,
       stub(() => Promise.resolve({ data: [record], error: null }))
     );
@@ -214,7 +217,8 @@ describe('verifyVisitor', () => {
       has_email: false,
     };
     const out = await verifyVisitor(
-      'Daniella Casiano',
+      'Daniella',
+      'Casiano',
       COURSE,
       stub(() => Promise.resolve({ data: [noEmail], error: null }))
     );
@@ -234,7 +238,8 @@ describe('verifyVisitor', () => {
     // address must never collapse into "we have no record of you", which would
     // send a real cohort member off to register a duplicate account.
     const out = await verifyVisitor(
-      'Daniella Casiano',
+      'Daniella',
+      'Casiano',
       COURSE,
       stub(() =>
         Promise.resolve({
@@ -252,7 +257,8 @@ describe('verifyVisitor', () => {
     // member "we could not check you" because of a dropped connection, sending
     // them to re-register and creating the duplicate account we are avoiding.
     const out = await verifyVisitor(
-      'A Stranger',
+      'A',
+      'Stranger',
       COURSE,
       stub(() => Promise.resolve({ data: [], error: null }))
     );
@@ -265,7 +271,8 @@ describe('verifyVisitor', () => {
     // verdict and mails that stranger's sign-in link.
     const twin = { ...record, email: 'other.person@gmail.com' };
     const out = await verifyVisitor(
-      'Gemmalyn Ocbina Aranda',
+      'Gemmalyn',
+      'Aranda',
       COURSE,
       stub(() => Promise.resolve({ data: [record, twin], error: null }))
     );
@@ -277,7 +284,8 @@ describe('verifyVisitor', () => {
 
   test('error: RPC failure is reported separately from not-found', async () => {
     const out = await verifyVisitor(
-      'Gemmalyn Ocbina Aranda',
+      'Gemmalyn',
+      'Aranda',
       COURSE,
       stub(() => Promise.resolve({ data: null, error: { message: 'boom' } }))
     );
@@ -287,7 +295,8 @@ describe('verifyVisitor', () => {
 
   test('error: a thrown transport failure is caught, not propagated', async () => {
     const out = await verifyVisitor(
-      'Gemmalyn Ocbina Aranda',
+      'Gemmalyn',
+      'Aranda',
       COURSE,
       stub(() => Promise.reject(new Error('offline')))
     );
@@ -300,16 +309,18 @@ describe('verifyVisitor', () => {
       called = true;
       return Promise.resolve({ data: [], error: null });
     });
-    assert.equal((await verifyVisitor('', COURSE, client)).kind, 'error');
-    assert.equal((await verifyVisitor('   ', COURSE, client)).kind, 'error');
-    assert.equal((await verifyVisitor('A Name', '', client)).kind, 'error');
+    assert.equal((await verifyVisitor('', 'Aranda', COURSE, client)).kind, 'error');
+    assert.equal((await verifyVisitor('   ', 'Aranda', COURSE, client)).kind, 'error');
+    assert.equal((await verifyVisitor('Gemmalyn', '', COURSE, client)).kind, 'error');
+    assert.equal((await verifyVisitor('Gemmalyn', 'Aranda', '', client)).kind, 'error');
     assert.equal(called, false);
   });
 
-  test('sends the trimmed name and the course id it was given', async () => {
+  test('sends the trimmed names and the course id it was given', async () => {
     let args: Record<string, unknown> = {};
     await verifyVisitor(
-      '  Gemmalyn Ocbina Aranda  ',
+      '  Gemmalyn  ',
+      '  Aranda  ',
       COURSE,
       stub((_fn, a) => {
         args = a;
@@ -317,7 +328,8 @@ describe('verifyVisitor', () => {
       })
     );
     // Trimming is done here; case folding is the database's job via lower().
-    assert.equal(args.p_name, 'Gemmalyn Ocbina Aranda');
+    assert.equal(args.p_first_name, 'Gemmalyn');
+    assert.equal(args.p_last_name, 'Aranda');
     assert.equal(args.p_course_id, COURSE);
     // The address must not be an argument at all.
     assert.ok(!('p_email' in args));
@@ -327,7 +339,8 @@ describe('verifyVisitor', () => {
     // The page branches on this, so it must survive the round trip intact.
     const declined = { ...record, orientation_status: 'declined' as const };
     const out = await verifyVisitor(
-      'Gemmalyn Ocbina Aranda',
+      'Gemmalyn',
+      'Aranda',
       COURSE,
       stub(() => Promise.resolve({ data: [declined], error: null }))
     );
@@ -337,7 +350,8 @@ describe('verifyVisitor', () => {
   test('preserves pending, which must not be treated as approved', async () => {
     const pending = { ...record, orientation_status: 'pending' as const };
     const out = await verifyVisitor(
-      'Gemmalyn Ocbina Aranda',
+      'Gemmalyn',
+      'Aranda',
       COURSE,
       stub(() => Promise.resolve({ data: [pending], error: null }))
     );

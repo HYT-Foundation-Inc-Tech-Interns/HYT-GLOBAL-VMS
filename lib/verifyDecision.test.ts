@@ -4,6 +4,7 @@ import { decideVerification, verifyVisitor } from './publicUrl.ts';
 
 describe('decideVerification (verify -> login / review decision)', () => {
   const base = {
+    id: 'u1',
     orientation_status: 'pending' as const,
     full_name: 'A Person',
     programme: 'Barista NC II',
@@ -55,7 +56,8 @@ describe('verification failures never authenticate', () => {
 
   test('failed verification (rpc error) -> error outcome, no record', async () => {
     const out = await verifyVisitor(
-      'A Name',
+      'A',
+      'Name',
       'c1',
       stub(() => Promise.resolve({ data: null, error: { message: 'boom' } }))
     );
@@ -64,7 +66,8 @@ describe('verification failures never authenticate', () => {
 
   test('database failure / timeout -> error outcome, no record', async () => {
     const out = await verifyVisitor(
-      'A Name',
+      'A',
+      'Name',
       'c1',
       stub(() => Promise.reject(new Error('timeout')))
     );

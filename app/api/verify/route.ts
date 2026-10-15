@@ -10,10 +10,12 @@ import {
 // ============================================================================
 // Entrance verification -> immediate sign-in.
 //
-// The QR poster at the front desk points at /verify. A visitor types their name
-// and picks their course; this route resolves that against the roster and, when
-// the record is approved, hands back a real Supabase session so the app can log
-// them straight in - NO email, NO link to click.
+// The QR poster at the front desk points at /verify. A visitor types their first
+// and last name and picks their course; this route resolves that against the
+// roster (matching the first and last word of the stored full name, so a middle
+// name may be omitted) and, when the record is approved, hands back a real
+// Supabase session so the app can log them straight in - NO email, NO link to
+// click.
 //
 // WHY THIS IS A SERVER ROUTE
 // --------------------------
@@ -112,35 +114,6 @@ function syntheticEmailFor(id: string): string {
 }
 
 /**
- * The profile row behind the matched record, resolved by the SAME name + course
- * key the lookup used. Returns the id (needed to link a provisioned login) and
- * the address on file, which may be null.
- */
-async function resolveProfile(
-  service: NonNullable<ReturnType<typeof getServiceClient>>,
-  courseId: string,
-  name: string
-): Promise<{ id: string; email: string | null } | null> {
-  const { data, error } = await service
-    .from('users')
-    .select('id, email')
-    .eq('course_id', courseId)
-    // `name` is the exact stored value from the matched row, so this is an
-    // exact match, not a pattern (an ilike would treat _ and % in a name as
-    // wildcards).
-    .eq('name', name)
-    .is('archived_at', null)
-    .maybeSingle();
-
-  if (error) {
-    console.error('verify: could not resolve the profile row:', error);
-    return null;
-  }
-
-  return data ?? null;
-}
-
-/**
  * Creates the auth login for a profile that has none, under the SAME id.
  *
  * The imported orientation roster lives in `public.users` with no matching
@@ -190,14 +163,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const name = typeof body?.name === 'string' ? body.name.trim() : '';
+  const firstName = typeof body?.firstName === 'string' ? body.firstName.trim() : '';
+  const lastName = typeof body?.lastName === 'string' ? body.lastName.trim() : '';
   const courseId = typeof body?.courseId === 'string' ? body.courseId : '';
 
-  if (!name || !courseId) {
+  if (!firstName || !lastName || !courseId) {
     return NextResponse.json(
       {
         kind: 'error',
-        message: 'Enter your full name and select your course.',
+        message: 'Enter your first and last name, and select your course.',
       } satisfies VerifyLoginResponse,
       { status: 400 }
     );
@@ -231,7 +205,7 @@ export async function POST(request: Request) {
   }
 
   // The same lookup and decision the UI uses, run again here as the authority.
-  const outcome = await verifyVisitor(name, courseId, anon);
+  const outcome = await verifyVisitor(firstName, lastName, courseId, anon);
 
   if (outcome.kind === 'not-found') {
     return NextResponse.json({ kind: 'not-found' } satisfies VerifyLoginResponse);
@@ -262,24 +236,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ kind: 'review', record: shown } satisfies VerifyLoginResponse);
   }
 
-  // Approved / recognized. Resolve the profile row first - by the same name +
-  // course key the lookup used - so we have its id even when it has no address
-  // on file.
-  const profile = await resolveProfile(service, courseId, record.full_name);
-  if (!profile) {
-    console.error(
-      `verify: no profile row for ${record.full_name} in course ${courseId}`
-    );
-    return NextResponse.json(
-      { kind: 'error', message: SIGN_IN_FAILED } satisfies VerifyLoginResponse,
-      { status: 500 }
-    );
-  }
-
+  // Approved / recognized. The lookup already returned the profile's id and the
+  // address on file, so there is no second query to resolve them - the matched
+  // row IS the profile.
+  //
   // A profile with no address still gets a login: a synthetic, non-deliverable
   // address derived from its id. The token is redeemed server-side, so nothing
   // is ever sent to it.
-  const email = profile.email || syntheticEmailFor(profile.id);
+  const email = record.email || syntheticEmailFor(record.id);
 
   // Ensure a login exists for THIS profile id BEFORE generating a token.
   //
@@ -287,10 +251,10 @@ export async function POST(request: Request) {
   // none - with a RANDOM id - which would sign the visitor in as the wrong
   // account (and, for a synthetic address, leave a stray profile behind). So the
   // user must already exist, created by us under the profile's id.
-  const existing = await service.auth.admin.getUserById(profile.id);
+  const existing = await service.auth.admin.getUserById(record.id);
   if (!existing.data?.user) {
     const provisioned = await provisionLogin(service, {
-      id: profile.id,
+      id: record.id,
       email,
       name: record.full_name,
     });

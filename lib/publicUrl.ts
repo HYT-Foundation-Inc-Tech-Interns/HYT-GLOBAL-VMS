@@ -133,10 +133,25 @@ export async function fetchOrientationStatus(
  * The flag rides along in the query string so no extra route has to exist just
  * to carry a boolean. It is read and then stripped by
  * `useAutoCheckInAfterVerify`.
+ *
+ * This points at /check-in, not /successfully-registered. The confirmation page
+ * still exists and is still where a fresh self-registration lands (see
+ * app/register), but an approved verification now goes straight to the check-in
+ * page, where the visitor is checked in automatically and can carry on to scan
+ * room codes.
  */
-export const VERIFIED_CHECKIN_PATH = '/successfully-registered?verified=1';
+export const VERIFIED_CHECKIN_PATH = '/check-in?verified=1';
 
 export interface VerifyRecord {
+  /**
+   * `users.id` of the matched row, returned by migration 20260101000017.
+   *
+   * The server route needs it to provision a login and mint a session. It is
+   * deliberately NOT forwarded to the browser - `shownRecord` in
+   * app/api/verify/route.ts strips the response down to name, programme and
+   * verdict.
+   */
+  id: string;
   orientation_status: OrientationStatus;
   full_name: string;
   programme: string | null;
@@ -205,26 +220,30 @@ export type VerifyOutcome =
  * IDENTIFICATION ONLY - this does not authenticate. See the header of migration
  * 20260101000013 for why name and course cannot stand in for a credential.
  *
- * Keyed on name + course rather than email, because the visitor picks a course
- * from a list instead of typing an address. The returned record still carries
- * the email, and that - never anything the caller supplied - is where the magic
- * link goes. So a visitor cannot redirect their own sign-in link by typing a
- * different address here.
+ * Keyed on first + last name and course rather than email, because the visitor
+ * picks a course from a list instead of typing an address. The database matches
+ * the first and last WORD of the stored full name, so a visitor may omit their
+ * middle name (see migration 20260101000017). The returned record still carries
+ * the email, and that - never anything the caller supplied - is where the sign-in
+ * goes. So a visitor cannot redirect their own sign-in by typing a different
+ * address here.
  *
  * `ambiguous` is a distinct outcome on purpose. Courses hold many people and two
- * of them can share a name, so more than one row is a real possibility. Picking
- * the first would show somebody a stranger's verdict AND mail that stranger's
- * sign-in link to an address the person at the door controls the phone for.
+ * of them can share both a first and a last name, so more than one row is a real
+ * possibility. Picking the first would show somebody a stranger's verdict AND
+ * sign in as that stranger.
  */
 export async function verifyVisitor(
-  name: string,
+  firstName: string,
+  lastName: string,
   courseId: string,
   supabase: { rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message?: string } | null }> }
 ): Promise<VerifyOutcome> {
-  const trimmedName = name.trim();
+  const trimmedFirst = firstName.trim();
+  const trimmedLast = lastName.trim();
 
-  if (!trimmedName) {
-    return { kind: 'error', message: 'Enter the full name on your record.' };
+  if (!trimmedFirst || !trimmedLast) {
+    return { kind: 'error', message: 'Enter your first and last name.' };
   }
   if (!courseId) {
     return { kind: 'error', message: 'Select your course.' };
@@ -232,7 +251,8 @@ export async function verifyVisitor(
 
   try {
     const { data, error } = await supabase.rpc('verify_visitor', {
-      p_name: trimmedName,
+      p_first_name: trimmedFirst,
+      p_last_name: trimmedLast,
       p_course_id: courseId,
     });
     if (error) {
@@ -297,7 +317,8 @@ export type VerifyLoginResponse =
   | { kind: 'error'; message: string };
 
 /**
- * Verifies name + course and, when the record is approved, signs the visitor in.
+ * Verifies a first + last name and a course, and when the record is approved,
+ * signs the visitor in.
  *
  * Calls the server route rather than Supabase directly, because minting a
  * session needs the service-role key, which must never reach the browser. The
@@ -308,14 +329,19 @@ export type VerifyLoginResponse =
  * same way `verifyVisitor` degrades, so the page has one shape to handle.
  */
 export async function requestVerifyLogin(
-  name: string,
+  firstName: string,
+  lastName: string,
   courseId: string
 ): Promise<VerifyLoginResponse> {
   try {
     const response = await fetch('/api/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), courseId }),
+      body: JSON.stringify({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        courseId,
+      }),
     });
     const data = (await response.json()) as VerifyLoginResponse;
     if (!data || typeof data !== 'object' || !('kind' in data)) {

@@ -26,8 +26,9 @@ const INPUT =
 /**
  * Entrance verification.
  *
- * Reached by scanning the QR poster at the front desk. Asks who the visitor is,
- * looks them up against the roster, and routes on the result:
+ * Reached by scanning the QR poster at the front desk. Asks for the visitor's
+ * first and last name, looks them up against the roster, and routes on the
+ * result:
  *
  *   found + approved  -> sign them in and send them to check-in
  *   found + declined  -> explain, point at the front desk
@@ -64,7 +65,8 @@ const INPUT =
 export default function VerifyPage() {
   const router = useRouter();
   const { fetchCourses, getActiveCourses } = useRoomsStore();
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [courseId, setCourseId] = useState('');
   const [stage, setStage] = useState<Stage>('form');
   const [record, setRecord] = useState<VerifyLoginRecord | null>(null);
@@ -84,7 +86,7 @@ export default function VerifyPage() {
     setError('');
     setBusy(true);
 
-    const outcome = await requestVerifyLogin(name, courseId);
+    const outcome = await requestVerifyLogin(firstName, lastName, courseId);
 
     if (outcome.kind === 'not-found') {
       setStage('not-found');
@@ -149,12 +151,17 @@ export default function VerifyPage() {
     router.replace(VERIFIED_CHECKIN_PATH);
   };
 
-  // Carry their name into registration so it is not retyped. Only the name: the
-  // course is deliberately NOT forwarded. /register keys its picker on course id
-  // and the course list loads asynchronously, so a label in the query string
-  // could not be applied without a re-render race - and the visitor is picking
-  // their course fresh anyway, since that is what told us they had no record.
-  const registerHref = `/register?name=${encodeURIComponent(name.trim())}`;
+  // Carry their name into registration so it is not retyped. The two fields are
+  // joined back into the single Full name that /register still asks for - that
+  // form is unchanged, and a visitor who is registering for the first time has
+  // no middle name on file for us to know. Only the name: the course is
+  // deliberately NOT forwarded. /register keys its picker on course id and the
+  // course list loads asynchronously, so a label in the query string could not
+  // be applied without a re-render race - and the visitor is picking their
+  // course fresh anyway, since that is what told us they had no record.
+  const registerHref = `/register?name=${encodeURIComponent(
+    `${firstName} ${lastName}`.trim()
+  )}`;
 
   return (
     <div className='min-h-screen flex items-start sm:items-center justify-center p-4 sm:py-8'>
@@ -176,26 +183,48 @@ export default function VerifyPage() {
           {stage === 'form' && (
             <>
               <p className='text-navy-300 text-sm mb-5'>
-                Enter your name and course to verify your previous visit.
+                Enter your first and last name to verify your previous visit.
               </p>
 
               <form onSubmit={handleSubmit} className='space-y-4'>
-                <div>
-                  <label
-                    htmlFor='v-name'
-                    className='block text-sm font-medium text-navy-200 mb-1.5'
-                  >
-                    Full name <span className='text-red-400'>*</span>
-                  </label>
-                  <input
-                    id='v-name'
-                    className={INPUT}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder='Juan C. Dela Cruz'
-                    autoComplete='name'
-                    required
-                  />
+                {/* Two fields, not one. The database matches the first and last
+                    word of the stored full name, so a visitor does not have to
+                    reproduce their middle name exactly to be let in. */}
+                <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
+                  <div>
+                    <label
+                      htmlFor='v-first-name'
+                      className='block text-sm font-medium text-navy-200 mb-1.5'
+                    >
+                      First name <span className='text-red-400'>*</span>
+                    </label>
+                    <input
+                      id='v-first-name'
+                      className={INPUT}
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder='Juan'
+                      autoComplete='given-name'
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor='v-last-name'
+                      className='block text-sm font-medium text-navy-200 mb-1.5'
+                    >
+                      Last name <span className='text-red-400'>*</span>
+                    </label>
+                    <input
+                      id='v-last-name'
+                      className={INPUT}
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder='Dela Cruz'
+                      autoComplete='family-name'
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div>
