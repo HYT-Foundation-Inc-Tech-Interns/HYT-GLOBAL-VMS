@@ -22,7 +22,7 @@ export default function QRScanner() {
   const { clockOutRecord } = useRecordsStore();
   const { enterRoom, leaveRoom, getCurrentRoom, fetchTodayPresence } =
     useRoomPresenceStore();
-  const { fetchRooms, fetchPurposes, getRoomByQr, getRoomByNumber } =
+  const { fetchRooms, fetchPurposes, fetchCourses, getRoomByQr, getRoomByNumber } =
     useRoomsStore();
   const { user } = useAuthStore();
 
@@ -133,15 +133,17 @@ const handledRef = useRef(false);
   }, []);
 
   // Rooms must be loaded before a door code can be resolved to a room id, and
-  // purposes before check-in can record one.
+  // purposes before check-in can record one. Courses too: a visitor with no
+  // explicit room falls back to the room mapped to their course.
   useEffect(() => {
     fetchRooms();
     fetchPurposes();
+    fetchCourses();
     // Load presence so `getCurrentRoom` knows where this person already is.
     // Both the "you're already here" check and the check-out confirmation
     // depend on it, and without it the store was empty so both were skipped.
     fetchTodayPresence();
-  }, [fetchRooms, fetchPurposes, fetchTodayPresence]);
+  }, [fetchRooms, fetchPurposes, fetchCourses, fetchTodayPresence]);
 
   const handleScanSuccess = useCallback(
     async (decodedText: string) => {

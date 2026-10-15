@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/authStore';
@@ -78,6 +78,7 @@ export default function UsersPage() {
     getActivePurposes,
     fetchCourses,
     getActiveCourses,
+    getRoomForCourse,
   } = useRoomsStore();
   const {
     users,
@@ -106,6 +107,10 @@ export default function UsersPage() {
     text: string;
   } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Whether the admin picked a room by hand in the create modal. Once they
+  // have, the course no longer overwrites it.
+  const roomTouched = useRef(false);
 
   const visitorTypes = getActiveVisitorTypes();
   // Rooms and purposes back the assigned-room and purpose pickers, which mirror
@@ -142,6 +147,17 @@ export default function UsersPage() {
     const timer = setTimeout(() => setNotice(null), 4000);
     return () => clearTimeout(timer);
   }, [notice]);
+
+  // Auto-assign the room from the chosen course, but ONLY when creating. On
+  // edit the room is left exactly as stored: auto-filling there would write a
+  // pending_room_id for existing users, which is a backfill this feature
+  // deliberately avoids (existing users derive their room at runtime instead).
+  useEffect(() => {
+    if (editing || roomTouched.current) return;
+    const mapped = getRoomForCourse(form.courseId);
+    const next = mapped && rooms.some((r) => r.id === mapped.id) ? mapped.id : '';
+    setForm((f) => (f.pendingRoomId === next ? f : { ...f, pendingRoomId: next }));
+  }, [editing, form.courseId, rooms, getRoomForCourse]);
 
   // Archived rows are searched with the same filter as the active list so the
   // two views cannot drift apart.
@@ -190,6 +206,8 @@ export default function UsersPage() {
     setEditing(null);
     setForm(EMPTY_FORM);
     setFormError(null);
+    // A fresh create: let the course drive the room again.
+    roomTouched.current = false;
     setIsModalOpen(true);
   };
 
@@ -776,9 +794,11 @@ if (editing) {
                   <select
                     id='pendingRoomId'
                     value={form.pendingRoomId}
-                    onChange={(e) =>
-                      setForm({ ...form, pendingRoomId: e.target.value })
-                    }
+                    onChange={(e) => {
+                      // A deliberate choice: stop deriving the room from the course.
+                      roomTouched.current = true;
+                      setForm({ ...form, pendingRoomId: e.target.value });
+                    }}
                     className={`${INPUT} appearance-none cursor-pointer`}
                   >
                     <option value='' className='bg-navy-900'>
@@ -793,8 +813,9 @@ if (editing) {
                   <i className='fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-navy-400 text-xs pointer-events-none'></i>
                 </div>
                 <p className='text-navy-500 text-xs mt-1'>
-                  Optional. Applied to their first check-in; after that the room is
-                  recorded when they scan a door code.
+                  Filled in from the course; you can change it. Applied to their
+                  first check-in; after that the room is recorded when they scan
+                  a door code.
                 </p>
               </div>
 

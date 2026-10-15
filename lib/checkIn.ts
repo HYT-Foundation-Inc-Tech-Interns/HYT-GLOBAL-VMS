@@ -22,10 +22,12 @@ export interface CheckInResult {
  * drift: same room, same purpose, same record shape.
  *
  * `room_id` and `purpose_id` are the visitor's assigned room and declared
- * purpose, resolved from the already-loaded reference stores. A purpose that
- * only exists in the built-in fallback list carries a non-UUID id, so it is
- * written as null rather than sent to a UUID column (which would fail the whole
- * insert and lose the check-in).
+ * purpose, resolved from the already-loaded reference stores. The room falls
+ * back to the one mapped to the visitor's course when no explicit destination
+ * is set, so an enrolled-but-unassigned visitor is still placed correctly. A
+ * purpose that only exists in the built-in fallback list carries a non-UUID id,
+ * so it is written as null rather than sent to a UUID column (which would fail
+ * the whole insert and lose the check-in).
  *
  * The database enforces one open row per user (`clock_in_one_open_per_user`),
  * so a duplicate call cannot open a second visit. Callers should still check for
@@ -34,13 +36,22 @@ export interface CheckInResult {
 export async function performVisitorCheckIn(user: User): Promise<CheckInResult> {
   const { addRecord } = useRecordsStore.getState();
   const { clockIn, setActiveRoute } = useClockInStore.getState();
-  const { getRoomByNumber, getActivePurposes } = useRoomsStore.getState();
+  const { getRoomByNumber, getActivePurposes, getRoomForCourse } =
+    useRoomsStore.getState();
+
+  // Precedence: an explicit destination (a manual choice, or users.pending_room_id
+  // reduced to a room number) wins; otherwise fall back to the room mapped from
+  // the visitor's course, so someone enrolled in a course but never assigned a
+  // room still lands where their course meets.
+  const assigned =
+    getRoomByNumber(user.destination) ?? getRoomForCourse(user.courseId);
 
   // Draw the route to the visitor's assigned destination from the start, the
   // same as a manual check-in, so the "View 3D Route" button is reachable.
-  setActiveRoute(getRoute(routeIdForDestination(user.destination)).id);
+  setActiveRoute(
+    getRoute(routeIdForDestination(assigned?.roomNumber ?? user.destination)).id
+  );
 
-  const assigned = getRoomByNumber(user.destination);
   const purpose = getActivePurposes().find((p) => p.label === user.purpose);
   const purposeIdToWrite =
     purpose && !purpose.id.startsWith('fallback-') ? purpose.id : null;

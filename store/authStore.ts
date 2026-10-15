@@ -93,21 +93,27 @@ export interface User {
  * because `QRScanner` matches the purpose chosen at the scanner by label.
  *
  * Both are resolved through `useRoomsStore.getState()` rather than passed in, so
- * every sign-in path can call this identically. Resolving to nothing simply
- * leaves the visitor with no assigned room or purpose - the same as before
- * migration 007, not an error.
+ * every sign-in path can call this identically. When no pending room is set, the
+ * room is derived from the visitor's course (`courses.room_id`), so someone
+ * enrolled but never individually assigned still resolves to a room. Resolving
+ * to nothing simply leaves the visitor with no assigned room or purpose - the
+ * same as before migration 007, not an error.
  */
 function pendingFromProfile(row: any): Partial<User> {
   const pendingRoomId: string | null = row.pending_room_id ?? null;
   const pendingPurposeId: string | null = row.pending_purpose_id ?? null;
+  const courseId: string | null = row.course_id ?? null;
 
-  if (!pendingRoomId && !pendingPurposeId) return {};
+  if (!pendingRoomId && !pendingPurposeId && !courseId) return {};
 
-  const { getAllRooms, getActivePurposes } = useRoomsStore.getState();
+  const { getAllRooms, getActivePurposes, getRoomForCourse } =
+    useRoomsStore.getState();
 
+  // An explicit pending room (set by an admin, or chosen at registration) wins.
+  // Only when there is none do we fall back to the course's room.
   const room = pendingRoomId
     ? getAllRooms().find((r) => r.id === pendingRoomId)
-    : undefined;
+    : getRoomForCourse(courseId);
   const purpose = pendingPurposeId
     ? getActivePurposes().find((p) => p.id === pendingPurposeId)
     : undefined;
@@ -356,11 +362,19 @@ export const useAuthStore = create<AuthState>()(
           // The account is still valid; only the day is over.
 
           // Resolve any pending room/purpose BEFORE building the user, so the
-          // assigned room is present the first time the scanner reads it. Both
-          // stores are idempotent and cache, so this is cheap on a repeat
-          // sign-in. Only needed when the row actually carries the columns.
-          if (userData.pending_room_id || userData.pending_purpose_id) {
+          // assigned room is present the first time the scanner reads it. The
+          // room can also be derived from the visitor's course, so courses are
+          // loaded here too - without them a course-derived room would silently
+          // resolve to nothing. Every fetch is idempotent and caches, so this is
+          // cheap on a repeat sign-in. Only needed when the row actually carries
+          // one of the columns.
+          if (
+            userData.pending_room_id ||
+            userData.pending_purpose_id ||
+            userData.course_id
+          ) {
             await useRoomsStore.getState().fetchRooms();
+            await useRoomsStore.getState().fetchCourses();
             await useRoomsStore.getState().fetchPurposes();
           }
 
@@ -668,11 +682,19 @@ export const useAuthStore = create<AuthState>()(
           // person having to re-register.
 
           // Resolve any pending room/purpose BEFORE building the user, so the
-          // assigned room is present the first time the scanner reads it. Both
-          // stores are idempotent and cache, so this is cheap on a repeat
-          // sign-in. Only needed when the row actually carries the columns.
-          if (userData.pending_room_id || userData.pending_purpose_id) {
+          // assigned room is present the first time the scanner reads it. The
+          // room can also be derived from the visitor's course, so courses are
+          // loaded here too - without them a course-derived room would silently
+          // resolve to nothing. Every fetch is idempotent and caches, so this is
+          // cheap on a repeat sign-in. Only needed when the row actually carries
+          // one of the columns.
+          if (
+            userData.pending_room_id ||
+            userData.pending_purpose_id ||
+            userData.course_id
+          ) {
             await useRoomsStore.getState().fetchRooms();
+            await useRoomsStore.getState().fetchCourses();
             await useRoomsStore.getState().fetchPurposes();
           }
 

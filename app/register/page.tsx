@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useRoomsStore } from '@/store/roomsStore';
@@ -68,6 +68,7 @@ export default function RegisterPage() {
     getActiveRooms,
     fetchCourses,
     getActiveCourses,
+    getRoomForCourse,
   } = useRoomsStore();
 
   // Prefill from /verify. Somebody sent here because we had no record for them has
@@ -115,6 +116,10 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Whether the visitor has picked a room themselves. Once they have, the
+  // course no longer overwrites it - the manual choice is the override.
+  const roomTouched = useRef(false);
+
   // Orientation verdict for whoever is typing this email, once it resolves to a
   // cohort member. `undefined` = still looking (or not looking), `null` = not in
   // the cohort. Only a non-null record produces a banner.
@@ -139,6 +144,19 @@ export default function RegisterPage() {
     fetchRooms();
     fetchCourses();
   }, [fetchPurposes, fetchVisitorTypes, fetchRooms, fetchCourses]);
+
+  // Auto-assign the room from the chosen course. Runs only while the visitor
+  // has not picked a room themselves, so a deliberate override sticks. The
+  // same-value guard keeps this from looping when the effect re-runs as the
+  // reference lists load.
+  useEffect(() => {
+    if (roomTouched.current) return;
+    const mapped = getRoomForCourse(formData.courseId);
+    // Only offer a room the picker actually renders (the active list).
+    const next =
+      mapped && rooms.some((r) => r.id === mapped.id) ? mapped.roomNumber : '';
+    setFormData((f) => (f.destination === next ? f : { ...f, destination: next }));
+  }, [formData.courseId, rooms, getRoomForCourse]);
 
   // Orientation lookup, debounced.
   //
@@ -470,9 +488,11 @@ export default function RegisterPage() {
                   <select
                     id='destination'
                     value={formData.destination}
-                    onChange={(e) =>
-                      setFormData({ ...formData, destination: e.target.value })
-                    }
+                    onChange={(e) => {
+                      // A deliberate choice: stop deriving the room from the course.
+                      roomTouched.current = true;
+                      setFormData({ ...formData, destination: e.target.value });
+                    }}
                     className='
                       w-full pl-12 pr-4 py-3 rounded-lg appearance-none
                       bg-navy-900/80 border-2 border-yellow-500/30
@@ -496,8 +516,9 @@ export default function RegisterPage() {
                   <i className='fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-navy-400 text-xs pointer-events-none'></i>
                 </div>
                 <p className='text-navy-400 text-xs mt-2'>
-                  Optional. Recorded on your first check-in; you can go to any
-                  room later by scanning its door code.
+                  Filled in from your course. You can change it. Recorded on your
+                  first check-in; you can go to any room later by scanning its
+                  door code.
                 </p>
               </div>
 

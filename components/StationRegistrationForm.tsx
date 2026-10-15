@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRoomsStore } from '@/store/roomsStore';
 import { formatPhone, sanitisePhone, isAllowedPhoneKey } from '@/lib/phone';
 
@@ -59,12 +59,18 @@ export default function StationRegistrationForm() {
     getActiveRooms,
     fetchCourses,
     getActiveCourses,
+    getRoomForCourse,
   } = useRoomsStore();
 
   const [form, setForm] = useState<FormState>(EMPTY);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState<{ name: string; email: string } | null>(null);
+
+  // Whether staff picked a room by hand. Once they have, the course no longer
+  // overwrites it. Reset after a successful registration / Clear so the next
+  // walk-in auto-fills again from the retained course.
+  const roomTouched = useRef(false);
 
   const purposes = getActivePurposes();
   const visitorTypes = getActiveVisitorTypes();
@@ -77,6 +83,16 @@ export default function StationRegistrationForm() {
     fetchRooms();
     fetchCourses();
   }, [fetchPurposes, fetchVisitorTypes, fetchRooms, fetchCourses]);
+
+  // Auto-assign the room from the chosen course, unless staff already picked
+  // one. Same-value guard so this does not loop as the lists load; pendingRoomId
+  // is a dep so the room re-fills after a registration resets it.
+  useEffect(() => {
+    if (roomTouched.current) return;
+    const mapped = getRoomForCourse(form.courseId);
+    const next = mapped && rooms.some((r) => r.id === mapped.id) ? mapped.id : '';
+    setForm((f) => (f.pendingRoomId === next ? f : { ...f, pendingRoomId: next }));
+  }, [form.courseId, form.pendingRoomId, rooms, getRoomForCourse]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -144,7 +160,9 @@ export default function StationRegistrationForm() {
 
       setDone({ name, email });
       // Keep the pickers, clear only who was typed in: a queue of walk-ins
-      // should not mean re-choosing the course for each one.
+      // should not mean re-choosing the course for each one. Clearing the
+      // touched flag lets the retained course re-fill the room for the next one.
+      roomTouched.current = false;
       setForm({ ...EMPTY, courseId: form.courseId, visitorTypeId: form.visitorTypeId });
     } catch {
       setError('Network error. Check the connection and try again.');
@@ -307,7 +325,11 @@ export default function StationRegistrationForm() {
               id='reg-room'
               className={INPUT}
               value={form.pendingRoomId}
-              onChange={(e) => set('pendingRoomId', e.target.value)}
+              onChange={(e) => {
+                // A deliberate choice: stop deriving the room from the course.
+                roomTouched.current = true;
+                set('pendingRoomId', e.target.value);
+              }}
             >
               <option value=''>Not assigned</option>
               {rooms.map((r) => (
@@ -380,6 +402,7 @@ export default function StationRegistrationForm() {
           <button
             type='button'
             onClick={() => {
+              roomTouched.current = false;
               setForm(EMPTY);
               setError('');
               setDone(null);

@@ -80,9 +80,12 @@ export function useAutoCheckInAfterVerify() {
       try {
         // Ensure the assigned room and purpose can resolve before writing, so
         // the record is complete even on a cold arrival where the reference
-        // data has not loaded yet. Both fetches are idempotent and cached.
+        // data has not loaded yet. Courses are needed too: the room falls back
+        // to the course mapping when the visitor has no explicit destination.
+        // All three fetches are idempotent and cached.
         await useRoomsStore.getState().fetchRooms();
         await useRoomsStore.getState().fetchPurposes();
+        await useRoomsStore.getState().fetchCourses();
 
         // Adopt an existing open visit rather than opening a second one.
         const existing = await useRecordsStore

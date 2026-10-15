@@ -42,6 +42,12 @@ export interface Course {
   id: string;
   label: string;
   isActive: boolean;
+  /**
+   * FK to rooms.id (migration 20260101000018) - the room this course's visitors
+   * are assigned to. Null/absent when the course is unmapped, in which case
+   * there is simply no auto-assignment. `FALLBACK_COURSES` leaves it undefined.
+   */
+  roomId?: string | null;
 }
 
 /**
@@ -167,6 +173,12 @@ interface RoomsState {
   getPrimaryVisitorTypes: () => VisitorType[];
   getRoomById: (id: string | null | undefined) => Room | undefined;
   getRoomByNumber: (roomNumber: string | null | undefined) => Room | undefined;
+  /**
+   * The room a course's visitors are assigned to (courses.room_id). Returns
+   * undefined when the course is unknown, unmapped, or the room list has not
+   * loaded - callers treat all three as "no auto-assignment".
+   */
+  getRoomForCourse: (courseId: string | null | undefined) => Room | undefined;
   /** Resolves a scanned door code back to its room. */
   getRoomByQr: (qrValue: string) => Room | undefined;
 }
@@ -365,6 +377,7 @@ export const useRoomsStore = create<RoomsState>((set, get) => ({
           id: row.id,
           label: row.label,
           isActive: row.is_active,
+          roomId: row.room_id ?? null,
         })),
         coursesLoading: false,
       });
@@ -395,6 +408,16 @@ export const useRoomsStore = create<RoomsState>((set, get) => ({
           (r) => r.roomNumber.toLowerCase() === roomNumber.toLowerCase()
         )
       : undefined,
+
+  // Resolved through `rooms` at call time rather than snapshotted onto the
+  // course, because `fetchCourses` and `fetchRooms` land independently and
+  // whichever finished second would otherwise leave a stale room behind.
+  getRoomForCourse: (courseId) => {
+    if (!courseId) return undefined;
+    const course = get().courses.find((c) => c.id === courseId);
+    if (!course?.roomId) return undefined;
+    return get().rooms.find((r) => r.id === course.roomId);
+  },
 
   getRoomByQr: (qrValue) =>
     get().rooms.find(
