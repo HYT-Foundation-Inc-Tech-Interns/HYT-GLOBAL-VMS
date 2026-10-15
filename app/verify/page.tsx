@@ -24,6 +24,23 @@ const INPUT =
   'w-full px-4 py-3 rounded-lg bg-navy-900/80 border-2 border-yellow-500/30 text-white placeholder-navy-500 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 transition-colors';
 
 /**
+ * The hidden admin doorway.
+ *
+ * /login is admin-only and is no longer linked from anywhere a visitor can see,
+ * so the two names below are how the desk reaches it from the entrance screen.
+ * They are deliberately not on the roster, so no real visitor can match them.
+ *
+ * This is a DOOR, NOT A KEY: it only navigates to /admin, which is guarded by
+ * AuthGate. Someone who has not signed in still lands on /login and needs real
+ * credentials, so knowing these two words gains nothing by itself. Keep it that
+ * way - never let this branch mint a session or set `user`.
+ *
+ * Because this file ships to the browser, the words are readable in the JS
+ * bundle. That is acceptable only while the branch stays a redirect.
+ */
+const ADMIN_SHORTCUT = { firstName: 'john', lastName: 'admin' };
+
+/**
  * Entrance verification.
  *
  * Reached by scanning the QR poster at the front desk. Asks for the visitor's
@@ -61,6 +78,13 @@ const INPUT =
  *
  * The EMAIL IS NEVER TYPED HERE: it is read back off the matched row, so the
  * person at the door cannot redirect the session at somebody else.
+ *
+ * ADMIN DOORWAY
+ * -------------
+ * /login is admin-only and unlinked. Typing the two names in ADMIN_SHORTCUT
+ * below jumps to /admin instead of looking anyone up. It is a redirect, not a
+ * credential: /admin still requires a real signed-in admin, so this reveals the
+ * door without opening it.
  */
 export default function VerifyPage() {
   const router = useRouter();
@@ -84,6 +108,18 @@ export default function VerifyPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // Hidden admin doorway, checked BEFORE the roster lookup and before the
+    // course picker is validated, so it needs no course. It only navigates:
+    // /admin re-checks the session itself, so this cannot grant access.
+    if (
+      firstName.trim().toLowerCase() === ADMIN_SHORTCUT.firstName &&
+      lastName.trim().toLowerCase() === ADMIN_SHORTCUT.lastName
+    ) {
+      router.push('/admin');
+      return;
+    }
+
     setBusy(true);
 
     const outcome = await requestVerifyLogin(firstName, lastName, courseId);

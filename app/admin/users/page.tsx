@@ -12,13 +12,16 @@ import {
   type ManagedUser,
 } from '@/store/usersStore';
 import { visitorTypeStyle } from '@/lib/visitorTypeStyles';
+import { composeFullName } from '@/lib/fullName';
 import UserProfile from '@/components/UserProfile';
 
 const INPUT =
   'w-full px-4 py-2.5 rounded-lg bg-navy-950/60 border border-navy-700 text-white placeholder-navy-500 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 transition-colors';
 
 type FormState = {
-  name: string;
+  firstName: string;
+  middleInitial: string;
+  lastName: string;
   email: string;
   password: string;
   visitorTypeId: string;
@@ -35,7 +38,9 @@ type FormState = {
 };
 
 const EMPTY_FORM: FormState = {
-  name: '',
+  firstName: '',
+  middleInitial: '',
+  lastName: '',
   email: '',
   password: '',
   visitorTypeId: '',
@@ -214,7 +219,9 @@ export default function UsersPage() {
   const openEdit = (target: ManagedUser) => {
     setEditing(target);
     setForm({
-      name: target.name,
+      firstName: target.firstName,
+      middleInitial: target.middleInitial ?? '',
+      lastName: target.lastName,
       // Nullable since 20260101000014; the form's own field stays a string
       // because an admin editing this person is expected to supply an address.
       email: target.email ?? '',
@@ -244,7 +251,9 @@ export default function UsersPage() {
     e.preventDefault();
     setFormError(null);
 
-    if (!form.name.trim()) return setFormError('Name is required.');
+    if (!form.firstName.trim() || !form.lastName.trim()) {
+      return setFormError('First name and last name are required.');
+    }
     if (!form.email.trim()) return setFormError('Email is required.');
     if (!editing && form.password.length < 6) {
       return setFormError('Password must be at least 6 characters.');
@@ -255,6 +264,14 @@ export default function UsersPage() {
     if (!form.pendingPurposeId) {
       return setFormError('Please select a purpose.');
     }
+
+    // For the confirmation notice only. The server composes its own display
+    // name from the same parts, so this is never the source of truth.
+    const fullName = composeFullName(
+      form.firstName,
+      form.middleInitial,
+      form.lastName
+    );
 
     setIsSaving(true);
 
@@ -273,19 +290,23 @@ const profileFields = () => ({
 
 if (editing) {
       const { success, error } = await updateUser(editing.id, {
-        name: form.name.trim(),
+        firstName: form.firstName,
+        middleInitial: form.middleInitial,
+        lastName: form.lastName,
         email: form.email.trim(),
         ...profileFields(),
       });
       setIsSaving(false);
       if (!success) return setFormError(error || 'Could not save changes.');
       closeModal();
-      setNotice({ kind: 'success', text: `Updated ${form.name.trim()}.` });
+      setNotice({ kind: 'success', text: `Updated ${fullName}.` });
       return;
     }
 
     const { success, error } = await createUser({
-      name: form.name.trim(),
+      firstName: form.firstName,
+      middleInitial: form.middleInitial,
+      lastName: form.lastName,
       email: form.email.trim(),
       password: form.password,
       ...profileFields(),
@@ -293,7 +314,7 @@ if (editing) {
     setIsSaving(false);
     if (!success) return setFormError(error || 'Could not create the user.');
     closeModal();
-    setNotice({ kind: 'success', text: `Created ${form.name.trim()}.` });
+    setNotice({ kind: 'success', text: `Created ${fullName}.` });
   };
 
   const confirmArchive = async () => {
@@ -723,17 +744,49 @@ if (editing) {
                   {formError}
                 </div>
               )}
-              <div>
-                <label className='block text-sm font-medium text-navy-200 mb-2'>
-                  Name
-                </label>
-                <input
-                  type='text'
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  required
-                  className={INPUT}
-                />
+              {/* Three fields, not one: these are the columns the entrance
+                  check matches on. The middle initial is optional and is
+                  normalised to a single letter server-side. */}
+              <div className='grid grid-cols-1 sm:grid-cols-[1fr_4.5rem_1fr] gap-3'>
+                <div>
+                  <label className='block text-sm font-medium text-navy-200 mb-2'>
+                    First name <span className='text-red-400'>*</span>
+                  </label>
+                  <input
+                    type='text'
+                    value={form.firstName}
+                    onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                    required
+                    className={INPUT}
+                  />
+                </div>
+                <div>
+                  <label className='block text-sm font-medium text-navy-200 mb-2'>
+                    M.I.
+                  </label>
+                  <input
+                    type='text'
+                    value={form.middleInitial}
+                    onChange={(e) =>
+                      setForm({ ...form, middleInitial: e.target.value })
+                    }
+                    // Two, so an admin who types "O." is not stopped mid-word.
+                    maxLength={2}
+                    className={INPUT}
+                  />
+                </div>
+                <div>
+                  <label className='block text-sm font-medium text-navy-200 mb-2'>
+                    Last name <span className='text-red-400'>*</span>
+                  </label>
+                  <input
+                    type='text'
+                    value={form.lastName}
+                    onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                    required
+                    className={INPUT}
+                  />
+                </div>
               </div>
               <div>
                 <label className='block text-sm font-medium text-navy-200 mb-2'>

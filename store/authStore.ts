@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '@/lib/supabase';
 import { useRoomsStore } from '@/store/roomsStore';
+import { composeFullName, normaliseMiddleInitial } from '@/lib/fullName';
 
 /**
  * System permission level. Drives what a person may see and do.
@@ -200,7 +201,15 @@ interface AuthState {
   register: (data: {
     email: string;
     password: string;
-    name: string;
+    /**
+     * The name, in parts. `name` is composed from these with
+     * `composeFullName` rather than accepted directly, so the display string
+     * and the columns can never disagree. First and last are required by the
+     * form; the middle initial is optional.
+     */
+    firstName: string;
+    middleInitial?: string;
+    lastName: string;
     destination?: string;
     purpose?: string;
     // Visitor profile, self-declared at registration. The same columns the admin
@@ -420,6 +429,14 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true });
 
         try {
+          // The single display name the rest of the app reads, built here from
+          // the parts so the two can never disagree.
+          const fullName = composeFullName(
+            data.firstName,
+            data.middleInitial,
+            data.lastName
+          );
+
           // Sign up with Supabase Auth.
           //
           // No role is sent in the metadata, and none is accepted: the
@@ -431,7 +448,7 @@ export const useAuthStore = create<AuthState>()(
             password: data.password,
             options: {
               data: {
-                name: data.name,
+                name: fullName,
               },
             },
           });
@@ -490,8 +507,9 @@ export const useAuthStore = create<AuthState>()(
           //   - INSERT is checked by the self-insert policy, which only permits
           //     role = 'visitor' for your own id. Letting the client pick its
           //     own role would be a privilege escalation.
-          //   - The conflict update is limited to name/email, so re-registering
-          //     can never downgrade a role an admin granted.
+          //   - The conflict update is limited to name/email and the name
+          //     parts, so re-registering can never downgrade a role an admin
+          //     granted.
           // Elevated roles are assigned through /admin/users.
           //
           // The visitor profile columns are written here but only from the
@@ -504,7 +522,12 @@ export const useAuthStore = create<AuthState>()(
               {
                 id: authData.user.id, // This links to auth.users(id)
                 email: data.email,
-                name: data.name,
+                name: fullName,
+                // The parts, which is what the entrance check matches on.
+                // middle_initial is null when the visitor left it blank.
+                first_name: data.firstName.trim(),
+                middle_initial: normaliseMiddleInitial(data.middleInitial),
+                last_name: data.lastName.trim(),
                 ...(data.visitorTypeId
                   ? { visitor_type_id: data.visitorTypeId }
                   : {}),

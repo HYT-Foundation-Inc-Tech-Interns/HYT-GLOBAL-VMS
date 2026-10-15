@@ -134,11 +134,11 @@ export async function fetchOrientationStatus(
  * to carry a boolean. It is read and then stripped by
  * `useAutoCheckInAfterVerify`.
  *
- * This points at /check-in, not /successfully-registered. The confirmation page
- * still exists and is still where a fresh self-registration lands (see
- * app/register), but an approved verification now goes straight to the check-in
- * page, where the visitor is checked in automatically and can carry on to scan
- * room codes.
+ * This points at /check-in, not /successfully-registered. Both entry points -
+ * an approved verification and a fresh self-registration - now land on the
+ * check-in page, where the visitor is checked in automatically and can carry on
+ * to scan room codes. The confirmation page still exists but nothing routes to
+ * it any more.
  */
 export const VERIFIED_CHECKIN_PATH = '/check-in?verified=1';
 

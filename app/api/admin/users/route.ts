@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { composeFullName, normaliseMiddleInitial } from '@/lib/fullName';
 
 // Create/update/archive a user account.
 //
@@ -110,7 +111,9 @@ export async function POST(request: Request) {
 
   const {
     email,
-    name,
+    firstName,
+    middleInitial,
+    lastName,
     password,
     visitorTypeId,
     courseId,
@@ -123,12 +126,24 @@ export async function POST(request: Request) {
     pendingPurposeId,
   } = body ?? {};
 
-  if (!email || !name || !password) {
+  if (
+    typeof email !== 'string' ||
+    !email.trim() ||
+    typeof firstName !== 'string' ||
+    !firstName.trim() ||
+    typeof lastName !== 'string' ||
+    !lastName.trim() ||
+    !password
+  ) {
     return NextResponse.json(
-      { error: 'email, name and password are all required' },
+      { error: 'email, firstName, lastName and password are all required' },
       { status: 400 }
     );
   }
+
+  // Composed here, never taken from the client, so the display name and the
+  // three columns written below can never disagree.
+  const name = composeFullName(firstName, middleInitial, lastName);
 
   if (typeof password !== 'string' || password.length < 6) {
     return NextResponse.json(
@@ -171,6 +186,10 @@ export async function POST(request: Request) {
       id: created.user.id,
       email: email.trim().toLowerCase(),
       name,
+      // The parts the entrance check matches on.
+      first_name: firstName.trim(),
+      middle_initial: normaliseMiddleInitial(middleInitial),
+      last_name: lastName.trim(),
       role,
       visitor_type_id: visitorTypeId || null,
       // A visitor is enrolled in exactly one course, so this is persisted
@@ -235,7 +254,9 @@ export async function PATCH(request: Request) {
 
   const {
     id,
-    name,
+    firstName,
+    middleInitial,
+    lastName,
     email,
     visitorTypeId,
     company,
@@ -251,8 +272,16 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'A user id is required' }, { status: 400 });
   }
 
-  if (typeof name !== 'string' || !name.trim()) {
-    return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+  if (
+    typeof firstName !== 'string' ||
+    !firstName.trim() ||
+    typeof lastName !== 'string' ||
+    !lastName.trim()
+  ) {
+    return NextResponse.json(
+      { error: 'First name and last name are required' },
+      { status: 400 }
+    );
   }
 
   if (typeof email !== 'string' || !email.trim()) {
@@ -265,7 +294,11 @@ export async function PATCH(request: Request) {
   // partial update (the role field is no longer editable here) cannot blank a
   // column by omission.
   const patch: Record<string, unknown> = {
-    name: name.trim(),
+    // Composed from the parts, so the display name cannot drift from them.
+    name: composeFullName(firstName, middleInitial, lastName),
+    first_name: firstName.trim(),
+    middle_initial: normaliseMiddleInitial(middleInitial),
+    last_name: lastName.trim(),
     email: nextEmail,
   };
 

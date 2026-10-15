@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { useRoomsStore } from '@/store/roomsStore';
 import type { UserRole } from '@/store/authStore';
+import { composeFullName, normaliseMiddleInitial } from '@/lib/fullName';
 
 export interface ManagedUser {
   id: string;
@@ -10,7 +11,18 @@ export interface ManagedUser {
    * carried no address has NULL here, so anything that reads it must cope.
    */
   email: string | null;
+  /**
+   * The display name, composed from the parts below. Kept as the single string
+   * the table renders; the parts are what the edit form binds to.
+   */
   name: string;
+  /**
+   * Name parts (migration 20260101000019). Empty strings / null on a database
+   * where the backfill has not run, which the form shows as blank fields.
+   */
+  firstName: string;
+  middleInitial: string | null;
+  lastName: string;
   role: UserRole;
   createdAt: Date;
   /** Set when the account was retired. History is kept; the row is not deleted. */
@@ -57,7 +69,10 @@ export function isPassExpired(user: ManagedUser, now = new Date()): boolean {
 
 export interface NewUserInput {
   email: string;
-  name: string;
+  /** The name, in parts. `name` is composed from these server-side. */
+  firstName: string;
+  middleInitial?: string;
+  lastName: string;
   password: string;
   visitorTypeId?: string;
   company?: string;
@@ -74,7 +89,9 @@ export interface NewUserInput {
 }
 
 export interface UpdateUserInput {
-  name: string;
+  firstName: string;
+  middleInitial?: string;
+  lastName: string;
   email: string;
   visitorTypeId?: string;
   company?: string;
@@ -138,6 +155,7 @@ const SELECT_COLUMNS_BASE =
  */
 const SELECT_COLUMNS_FULL = `
   id, email, name, role, created_at, archived_at,
+  first_name, middle_initial, last_name,
   visitor_type_id, company, host_name, phone, valid_until, notes,
   pending_room_id, pending_purpose_id, course_id,
   visitor_types ( label )
@@ -161,6 +179,11 @@ function mapRow(row: any): ManagedUser {
     id: row.id,
     email: row.email,
     name: row.name,
+    // Absent on the fallback select (a database without migration 018), so
+    // these read as blank rather than throwing.
+    firstName: row.first_name ?? '',
+    middleInitial: row.middle_initial ?? null,
+    lastName: row.last_name ?? '',
     role: row.role as UserRole,
     createdAt: new Date(row.created_at),
     archivedAt: row.archived_at ? new Date(row.archived_at) : null,
@@ -365,7 +388,20 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
         users: state.users.map((u) => {
           if (u.id !== id) return u;
 
-          const next: ManagedUser = { ...u, name: updates.name, email: updates.email };
+          const next: ManagedUser = {
+            ...u,
+            // Recomposed, not echoed: the server writes `name` from the parts,
+            // so mirroring the caller's `name` would drift from the database.
+            name: composeFullName(
+              updates.firstName,
+              updates.middleInitial,
+              updates.lastName
+            ),
+            email: updates.email,
+            firstName: updates.firstName.trim(),
+            middleInitial: normaliseMiddleInitial(updates.middleInitial),
+            lastName: updates.lastName.trim(),
+          };
 
           if (updates.visitorTypeId !== undefined) {
             // The label is not in the update payload, so look it up in the

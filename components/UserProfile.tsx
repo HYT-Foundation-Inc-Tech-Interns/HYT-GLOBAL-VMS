@@ -37,9 +37,12 @@ export default function UserProfile() {
 
   if (!user) return null;
 
+  // Visitors and admins both land back on the entrance screen. /login is now
+  // admin-only and is reached by direct URL (or the hidden name shortcut on
+  // /verify), so it is no longer the post-logout destination.
   const handleLogout = () => {
     logout();
-    router.push('/login');
+    router.push('/verify');
   };
 
   // Admin keeps the red shield badge. Visitors wear the colour of their

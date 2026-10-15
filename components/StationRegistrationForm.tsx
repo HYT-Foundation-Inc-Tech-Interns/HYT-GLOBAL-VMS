@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRoomsStore } from '@/store/roomsStore';
 import { formatPhone, sanitisePhone, isAllowedPhoneKey } from '@/lib/phone';
+import { composeFullName } from '@/lib/fullName';
 
 const INPUT =
   'w-full px-4 py-2.5 rounded-lg bg-navy-950/60 border border-navy-700 text-white placeholder-navy-500 focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 transition-colors';
@@ -10,7 +11,9 @@ const INPUT =
 const LABEL = 'block text-sm font-medium text-navy-200 mb-1.5';
 
 type FormState = {
-  name: string;
+  firstName: string;
+  middleInitial: string;
+  lastName: string;
   email: string;
   password: string;
   visitorTypeId: string;
@@ -24,7 +27,9 @@ type FormState = {
 };
 
 const EMPTY: FormState = {
-  name: '',
+  firstName: '',
+  middleInitial: '',
+  lastName: '',
   email: '',
   // Pre-filled so the desk can hand over credentials without inventing one.
   // Not a secret: the pass is day-scoped by `validUntil`, and the visitor is
@@ -107,10 +112,11 @@ export default function StationRegistrationForm() {
     setError('');
 
     const email = form.email.trim().toLowerCase();
-    const name = form.name.trim();
+    const firstName = form.firstName.trim();
+    const lastName = form.lastName.trim();
 
-    if (!name || !email) {
-      setError('Name and email are both required');
+    if (!firstName || !lastName || !email) {
+      setError('First name, last name and email are all required');
       return;
     }
     // Deliberately loose, like the browser's own type=email rather than a strict
@@ -139,7 +145,9 @@ export default function StationRegistrationForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name,
+          firstName,
+          middleInitial: form.middleInitial,
+          lastName,
           email,
           password: form.password,
           visitorTypeId: form.visitorTypeId || undefined,
@@ -158,7 +166,10 @@ export default function StationRegistrationForm() {
         return;
       }
 
-      setDone({ name, email });
+      setDone({
+        name: composeFullName(firstName, form.middleInitial, lastName),
+        email,
+      });
       // Keep the pickers, clear only who was typed in: a queue of walk-ins
       // should not mean re-choosing the course for each one. Clearing the
       // touched flag lets the retained course re-fill the room for the next one.
@@ -211,20 +222,53 @@ export default function StationRegistrationForm() {
       )}
 
       <form onSubmit={handleSubmit} className='space-y-4'>
-        <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+        {/* Three name fields, not one: these are the columns the entrance
+            check matches on. First and last are required; the middle initial
+            is optional and is stored as a single letter. */}
+        <div className='grid grid-cols-1 sm:grid-cols-[1fr_4.5rem_1fr] gap-3'>
           <div>
-            <label className={LABEL} htmlFor='reg-name'>
-              Full name <span className='text-red-400'>*</span>
+            <label className={LABEL} htmlFor='reg-first-name'>
+              First name <span className='text-red-400'>*</span>
             </label>
             <input
-              id='reg-name'
+              id='reg-first-name'
               className={INPUT}
-              value={form.name}
-              onChange={(e) => set('name', e.target.value)}
-              placeholder='Juan Dela Cruz'
+              value={form.firstName}
+              onChange={(e) => set('firstName', e.target.value)}
+              placeholder='Juan'
               autoComplete='off'
             />
           </div>
+          <div>
+            <label className={LABEL} htmlFor='reg-middle-initial'>
+              M.I.
+            </label>
+            <input
+              id='reg-middle-initial'
+              className={`${INPUT} text-center`}
+              value={form.middleInitial}
+              onChange={(e) => set('middleInitial', e.target.value)}
+              // Two, so typing "C." is not cut off mid-word.
+              maxLength={2}
+              placeholder='C.'
+              autoComplete='off'
+            />
+          </div>
+          <div>
+            <label className={LABEL} htmlFor='reg-last-name'>
+              Last name <span className='text-red-400'>*</span>
+            </label>
+            <input
+              id='reg-last-name'
+              className={INPUT}
+              value={form.lastName}
+              onChange={(e) => set('lastName', e.target.value)}
+              placeholder='Dela Cruz'
+              autoComplete='off'
+            />
+          </div>
+        </div>
+        <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
           <div>
             <label className={LABEL} htmlFor='reg-email'>
               Email <span className='text-red-400'>*</span>
