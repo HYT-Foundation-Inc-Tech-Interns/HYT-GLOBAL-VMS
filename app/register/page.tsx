@@ -191,6 +191,11 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!formData.purpose) {
+      setError('Please select a purpose');
+      return;
+    }
+
     setLoading(true);
 
     // A self-registered visitor gets a pass that expires at the end of today.
@@ -504,7 +509,7 @@ export default function RegisterPage() {
                   htmlFor='purpose'
                   className='block text-sm font-medium text-yellow-200 mb-2'
                 >
-                  Purpose
+                  Purpose <span className='text-yellow-400'>*</span>
                 </label>
                 <div className='relative'>
                   <div className='absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none'>
@@ -516,6 +521,7 @@ export default function RegisterPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, purpose: e.target.value })
                     }
+                    required
                     className='
                       w-full pl-12 pr-4 py-3 rounded-lg appearance-none
                       bg-navy-900/80 border-2 border-yellow-500/30
@@ -525,7 +531,7 @@ export default function RegisterPage() {
                     '
                   >
                     <option value='' className='bg-navy-900'>
-                      Not sure yet
+                      Select a purpose
                     </option>
                     {purposes.map((purpose) => (
                       <option
@@ -540,8 +546,8 @@ export default function RegisterPage() {
                   <i className='fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-navy-400 text-xs pointer-events-none'></i>
                 </div>
                 <p className='text-navy-400 text-xs mt-2'>
-                  Optional. Applied to your first check-in, and you can pick a
-                  different reason on later visits.
+                  Applied to your first check-in, and you can pick a different
+                  reason on later visits.
                 </p>
               </div>
 

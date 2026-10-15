@@ -234,6 +234,9 @@ export default function UsersPage() {
     if (!editing && !form.courseId) {
       return setFormError('Please select a course.');
     }
+    if (!form.pendingPurposeId) {
+      return setFormError('Please select a purpose.');
+    }
 
     setIsSaving(true);
 
@@ -802,7 +805,7 @@ if (editing) {
                   htmlFor='pendingPurposeId'
                   className='block text-sm font-medium text-navy-200 mb-2'
                 >
-                  Purpose
+                  Purpose <span className='text-yellow-400'>*</span>
                 </label>
                 <div className='relative'>
                   <select
@@ -814,7 +817,7 @@ if (editing) {
                     className={`${INPUT} appearance-none cursor-pointer`}
                   >
                     <option value='' className='bg-navy-900'>
-                      Not sure yet
+                      Select a purpose
                     </option>
                     {purposes.map((purpose) => (
                       <option key={purpose.id} value={purpose.id} className='bg-navy-900'>
@@ -825,7 +828,7 @@ if (editing) {
                   <i className='fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-navy-400 text-xs pointer-events-none'></i>
                 </div>
                 <p className='text-navy-500 text-xs mt-1'>
-                  Optional. Applied to their first check-in, and they can pick a
+                  Applied to their first check-in, and they can pick a
                   different reason on later visits.
                 </p>
               </div>

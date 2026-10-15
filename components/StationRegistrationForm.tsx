@@ -112,6 +112,10 @@ export default function StationRegistrationForm() {
       setError('Please select a course');
       return;
     }
+    if (!form.pendingPurposeId) {
+      setError('Please select a purpose');
+      return;
+    }
 
     setBusy(true);
     try {
@@ -315,7 +319,7 @@ export default function StationRegistrationForm() {
           </div>
           <div>
             <label className={LABEL} htmlFor='reg-purpose'>
-              Purpose
+              Purpose <span className='text-red-400'>*</span>
             </label>
             <select
               id='reg-purpose'
@@ -323,7 +327,7 @@ export default function StationRegistrationForm() {
               value={form.pendingPurposeId}
               onChange={(e) => set('pendingPurposeId', e.target.value)}
             >
-              <option value=''>Not specified</option>
+              <option value=''>Select a purpose</option>
               {purposes.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}

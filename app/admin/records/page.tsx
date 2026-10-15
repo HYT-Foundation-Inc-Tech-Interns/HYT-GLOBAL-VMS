@@ -3,10 +3,46 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
-import { useRecordsStore, formatDurationMinutes } from '@/store/recordsStore';
+import { useRecordsStore, formatDurationMinutes, type ClockInRecord } from '@/store/recordsStore';
 import { useLiveData } from '@/hooks/useLiveData';
 import Link from 'next/link';
 import UserProfile from '@/components/UserProfile';
+
+/** Columns the records table can be sorted by. */
+type SortKey =
+  | 'userName'
+  | 'courseLabel'
+  | 'purposeLabel'
+  | 'timeIn'
+  | 'timeOut'
+  | 'durationMinutes'
+  | 'status';
+
+/**
+ * Reduces a record to a value the comparator can order.
+ *
+ * Nullable fields collapse to +Infinity so an unset value (no time out, no
+ * duration, no course) sorts to the end rather than jumping to the top - an
+ * empty cell at the front of an ascending sort reads as a bug.
+ */
+function sortValue(record: ClockInRecord, key: SortKey): string | number {
+  switch (key) {
+    case 'timeIn':
+      return record.timeIn.getTime();
+    case 'timeOut':
+      return record.timeOut ? record.timeOut.getTime() : Number.POSITIVE_INFINITY;
+    case 'durationMinutes':
+      return record.durationMinutes ?? Number.POSITIVE_INFINITY;
+    case 'userName':
+      return (record.userName ?? '').toLowerCase();
+    case 'courseLabel':
+      return (record.courseLabel ?? '').toLowerCase();
+    case 'purposeLabel':
+      return (record.purposeLabel ?? '').toLowerCase();
+    case 'status':
+      return record.status;
+  }
+}
 
 export default function RecordsPage() {
   const router = useRouter();
@@ -23,6 +59,11 @@ export default function RecordsPage() {
   const [selectedDay, setSelectedDay] = useState(String(now.getDate()));
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
+
+  // Column sorting. `timeIn` descending is the default because the table is a
+  // log: the most recent check-in is the one an admin almost always wants first.
+  const [sortKey, setSortKey] = useState<SortKey>('timeIn');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Keep the table live. It used to fetch once on mount, so a new check-in
   // never appeared until the page was reloaded.
@@ -96,6 +137,7 @@ export default function RecordsPage() {
       // `destination` no longer exists; the room name and the purpose are the
       // two things that now identify where someone was going and why.
       (record.purposeLabel?.toLowerCase().includes(term) ?? false) ||
+      (record.courseLabel?.toLowerCase().includes(term) ?? false) ||
       record.room.toLowerCase().includes(term);
 
     const matchesStatus = statusFilter === 'all' || record.status === statusFilter;
@@ -109,12 +151,62 @@ export default function RecordsPage() {
     return matchesSearch && matchesStatus && matchesDate;
   });
 
+  // Clicking a header sorts by it; clicking the active header flips direction.
+  // Switching to a new column starts ascending, which is what "sort by this"
+  // means when the column is not already the sort.
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  const sortedRecords = [...filteredRecords].sort((a, b) => {
+    const av = sortValue(a, sortKey);
+    const bv = sortValue(b, sortKey);
+    const dir = sortDir === 'asc' ? 1 : -1;
+    if (typeof av === 'number' && typeof bv === 'number') {
+      // Unset values (no time out, no duration) sink to the bottom whichever
+      // direction is active, rather than flipping to the top on a descending sort.
+      if (!Number.isFinite(av) && !Number.isFinite(bv)) return 0;
+      if (!Number.isFinite(av)) return 1;
+      if (!Number.isFinite(bv)) return -1;
+      return (av - bv) * dir;
+    }
+    return String(av).localeCompare(String(bv)) * dir;
+  });
+
+  // A sortable header: the whole label is the click target, and the arrow shows
+  // the current column and direction (a faint fa-sort marks the inactive ones).
+  const sortHeader = (label: string, key: SortKey) => (
+    <button
+      type='button'
+      onClick={() => toggleSort(key)}
+      className='flex items-center gap-2 uppercase tracking-wider hover:text-white transition-colors'
+      title={`Sort by ${label}`}
+    >
+      <span>{label}</span>
+      <i
+        className={`fa-solid text-[10px] ${
+          sortKey === key
+            ? sortDir === 'asc'
+              ? 'fa-arrow-up text-yellow-400'
+              : 'fa-arrow-down text-yellow-400'
+            : 'fa-sort text-navy-600'
+        }`}
+      ></i>
+    </button>
+  );
+
   // --- Export helpers -------------------------------------------------------
   // Shared tabular view of the currently filtered records.
   const buildExportData = () => {
     const headers = [
       'User',
       'User ID',
+      'Course',
       'Purpose',
       'Building',
       'Room',
@@ -124,9 +216,11 @@ export default function RecordsPage() {
       'Status',
     ];
 
-    const rows = filteredRecords.map((record) => [
+    // Exported in the order shown on screen, so a sorted view and its export agree.
+    const rows = sortedRecords.map((record) => [
       record.userName || 'User ' + record.userId.slice(0, 8),
       record.userId,
+      record.courseLabel ?? '',
       record.purposeLabel ?? '',
       record.building ?? '',
       record.room,
@@ -344,7 +438,7 @@ export default function RecordsPage() {
                     type='text'
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder='Search by name, purpose, or room...'
+                    placeholder='Search by name, course, purpose, or room...'
                     className='
                       w-full pl-12 pr-4 py-3 rounded-lg
                       bg-navy-900/50 border border-navy-700
@@ -499,28 +593,31 @@ export default function RecordsPage() {
               <table className='w-full'>
                 <thead className='bg-navy-900/50 border-b border-navy-800'>
                   <tr>
-                    <th className='px-4 py-3 text-left text-xs font-semibold text-navy-300 uppercase tracking-wider'>
-                      User
+                    <th className='px-4 py-3 text-left text-xs font-semibold text-navy-300'>
+                      {sortHeader('User', 'userName')}
                     </th>
-                    <th className='px-4 py-3 text-left text-xs font-semibold text-navy-300 uppercase tracking-wider'>
-                      Purpose / Room
+                    <th className='px-4 py-3 text-left text-xs font-semibold text-navy-300'>
+                      {sortHeader('Course', 'courseLabel')}
                     </th>
-                    <th className='px-4 py-3 text-left text-xs font-semibold text-navy-300 uppercase tracking-wider'>
-                      Time In
+                    <th className='px-4 py-3 text-left text-xs font-semibold text-navy-300'>
+                      {sortHeader('Purpose / Room', 'purposeLabel')}
                     </th>
-                    <th className='px-4 py-3 text-left text-xs font-semibold text-navy-300 uppercase tracking-wider'>
-                      Time Out
+                    <th className='px-4 py-3 text-left text-xs font-semibold text-navy-300'>
+                      {sortHeader('Time In', 'timeIn')}
                     </th>
-                    <th className='px-4 py-3 text-left text-xs font-semibold text-navy-300 uppercase tracking-wider'>
-                      Duration
+                    <th className='px-4 py-3 text-left text-xs font-semibold text-navy-300'>
+                      {sortHeader('Time Out', 'timeOut')}
                     </th>
-                    <th className='px-4 py-3 text-left text-xs font-semibold text-navy-300 uppercase tracking-wider'>
-                      Status
+                    <th className='px-4 py-3 text-left text-xs font-semibold text-navy-300'>
+                      {sortHeader('Duration', 'durationMinutes')}
+                    </th>
+                    <th className='px-4 py-3 text-left text-xs font-semibold text-navy-300'>
+                      {sortHeader('Status', 'status')}
                     </th>
                   </tr>
                 </thead>
                 <tbody className='divide-y divide-navy-800'>
-                  {filteredRecords.map((record) => (
+                  {sortedRecords.map((record) => (
                     <tr
                       key={record.id}
                       className='hover:bg-navy-900/30 transition-colors'
@@ -537,6 +634,15 @@ export default function RecordsPage() {
                             <p className='text-navy-500 text-xs'>{record.userId}</p>
                           </div>
                         </div>
+                      </td>
+                      <td className='px-4 py-3 whitespace-nowrap'>
+                        {record.courseLabel ? (
+                          <span className='px-2.5 py-1 rounded-md bg-yellow-500/10 text-yellow-300 border border-yellow-500/20 text-xs font-medium'>
+                            {record.courseLabel}
+                          </span>
+                        ) : (
+                          <span className='text-navy-500 text-sm'>—</span>
+                        )}
                       </td>
                       <td className='px-4 py-3'>
                         <p className='text-white font-medium'>
