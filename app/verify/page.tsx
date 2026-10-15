@@ -151,17 +151,20 @@ export default function VerifyPage() {
     router.replace(VERIFIED_CHECKIN_PATH);
   };
 
-  // Carry their name into registration so it is not retyped. The two fields are
-  // joined back into the single Full name that /register still asks for - that
-  // form is unchanged, and a visitor who is registering for the first time has
-  // no middle name on file for us to know. Only the name: the course is
-  // deliberately NOT forwarded. /register keys its picker on course id and the
-  // course list loads asynchronously, so a label in the query string could not
-  // be applied without a re-render race - and the visitor is picking their
-  // course fresh anyway, since that is what told us they had no record.
-  const registerHref = `/register?name=${encodeURIComponent(
-    `${firstName} ${lastName}`.trim()
-  )}`;
+  // Carry their name into registration so it is not retyped. The two fields map
+  // straight onto two of /register's three, so they travel separately rather
+  // than being joined and re-split. The middle initial is left blank: the
+  // visitor has not given us one, and inventing it from the stored name is
+  // exactly the guesswork the split columns exist to avoid.
+  //
+  // Only the name: the course is deliberately NOT forwarded. /register keys its
+  // picker on course id and the course list loads asynchronously, so a label in
+  // the query string could not be applied without a re-render race - and the
+  // visitor is picking their course fresh anyway, since that is what told us
+  // they had no record.
+  const registerHref =
+    `/register?firstName=${encodeURIComponent(firstName.trim())}` +
+    `&lastName=${encodeURIComponent(lastName.trim())}`;
 
   return (
     <div className='min-h-screen flex items-start sm:items-center justify-center p-4 sm:py-8'>
@@ -203,7 +206,7 @@ export default function VerifyPage() {
                       className={INPUT}
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
-                      placeholder='Juan'
+                      placeholder='Ma. Juana Mae'
                       autoComplete='given-name'
                       required
                     />
