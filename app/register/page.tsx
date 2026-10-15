@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useRoomsStore } from '@/store/roomsStore';
@@ -8,6 +8,7 @@ import { formatPhone, sanitisePhone, isAllowedPhoneKey } from '@/lib/phone';
 import { supabase } from '@/lib/supabase';
 import {
   fetchOrientationStatus,
+  VERIFIED_CHECKIN_PATH,
   type OrientationRecord,
 } from '@/lib/publicUrl';
 import Link from 'next/link';
@@ -79,20 +80,25 @@ export default function RegisterPage() {
   // needs a Suspense boundary in the App Router, and re-reading on every render
   // would fight the user's own edits as soon as they start typing.
   //
-  // The query string is attacker-supplied, so both values are treated as display
+  // The query string is attacker-supplied, so every value is treated as display
   // text only - the register path already re-validates the address, and nothing
   // downstream treats these fields as verified.
   const [prefill] = useState(() => {
-    if (typeof window === 'undefined') return { name: '', email: '' };
+    if (typeof window === 'undefined') {
+      return { firstName: '', lastName: '', email: '' };
+    }
     const params = new URLSearchParams(window.location.search);
     return {
-      name: (params.get('name') ?? '').slice(0, 120),
+      firstName: (params.get('firstName') ?? '').slice(0, 120),
+      lastName: (params.get('lastName') ?? '').slice(0, 120),
       email: (params.get('email') ?? '').slice(0, 254),
     };
   });
 
   const [formData, setFormData] = useState({
-    name: prefill.name,
+    firstName: prefill.firstName,
+    middleInitial: '',
+    lastName: prefill.lastName,
     email: prefill.email,
     password: '',
     confirmPassword: '',
@@ -115,10 +121,6 @@ export default function RegisterPage() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Whether the visitor has picked a room themselves. Once they have, the
-  // course no longer overwrites it - the manual choice is the override.
-  const roomTouched = useRef(false);
 
   // Orientation verdict for whoever is typing this email, once it resolves to a
   // cohort member. `undefined` = still looking (or not looking), `null` = not in
@@ -145,12 +147,10 @@ export default function RegisterPage() {
     fetchCourses();
   }, [fetchPurposes, fetchVisitorTypes, fetchRooms, fetchCourses]);
 
-  // Auto-assign the room from the chosen course. Runs only while the visitor
-  // has not picked a room themselves, so a deliberate override sticks. The
-  // same-value guard keeps this from looping when the effect re-runs as the
-  // reference lists load.
+  // The assigned room is derived from the chosen course and is not editable on
+  // this form, so this is the only writer of `destination`. The same-value guard
+  // keeps it from looping when the effect re-runs as the reference lists load.
   useEffect(() => {
-    if (roomTouched.current) return;
     const mapped = getRoomForCourse(formData.courseId);
     // Only offer a room the picker actually renders (the active list).
     const next =
@@ -194,15 +194,24 @@ export default function RegisterPage() {
     setError('');
 
     // Validation
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+    if (!formData.firstName.trim() || !formData.lastName.trim()) {
+      setError('First name and last name are required');
       return;
     }
 
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
+    // Password checks are commented out with the password fields below. There is
+    // no password input on this form any more, so both would fail on an empty
+    // string and block every registration. Restore them if the fields come back.
+    //
+    // if (formData.password !== formData.confirmPassword) {
+    //   setError('Passwords do not match');
+    //   return;
+    // }
+    //
+    // if (formData.password.length < 6) {
+    //   setError('Password must be at least 6 characters');
+    //   return;
+    // }
 
     if (!formData.courseId) {
       setError('Please select a course');
@@ -235,10 +244,21 @@ export default function RegisterPage() {
     const chosenRoom = rooms.find((r) => r.roomNumber === formData.destination);
     const chosenPurpose = purposes.find((p) => p.label === formData.purpose);
 
+    // No password is collected any more (see the commented-out fields below), but
+    // Supabase still needs one to create the auth user. This is a throwaway: it
+    // is never shown, never sent anywhere, and never used to sign in - visitors
+    // authenticate through /verify with their name and course.
+    const generatedPassword =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `visitor-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
     const result = await register({
-      name: formData.name,
+      firstName: formData.firstName,
+      middleInitial: formData.middleInitial,
+      lastName: formData.lastName,
       email: formData.email,
-      password: formData.password,
+      password: generatedPassword,
       destination: formData.destination || undefined,
       purpose: formData.purpose || undefined,
       pendingRoomId: chosenRoom?.id,
@@ -264,10 +284,11 @@ export default function RegisterPage() {
         // hardcodes role='visitor' and ignores anything the client sends. Admins
         // are provisioned by hand through /admin/users.
         //
-        // The ?verified=1 marker is the same one /verify appends, so the
-        // auto-check-in hook on /successfully-registered fires once the visitor
-        // lands - matching that page's "You are now checked in" text.
-        router.push('/successfully-registered?verified=1');
+        // The ?verified=1 marker is the same one /verify appends, so
+        // /check-in's auto-check-in hook fires as soon as the visitor lands and
+        // records them without a second scan. Same destination as a successful
+        // /verify, so both entry points end in the same place.
+        router.push(VERIFIED_CHECKIN_PATH);
       } else {
         setError(result.error || 'Registration failed');
         setLoading(false);
@@ -371,33 +392,100 @@ export default function RegisterPage() {
                 </div>
               )}
 
-              {/* Name Field */}
-              <div>
-                <label
-                  htmlFor='name'
-                  className='block text-sm font-medium text-yellow-200 mb-2'
-                >
-                  Full Name
-                </label>
-                <div className='relative'>
-                  <div className='absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none'>
-                    <i className='fa-solid fa-user text-yellow-400'></i>
+              {/* Name Field. Three inputs, not one: these are the columns the
+                  entrance check matches on. First and last are required; the
+                  middle initial is optional and is stored as a single letter. */}
+              <div className='grid grid-cols-1 sm:grid-cols-[1fr_4.5rem_1fr] gap-3'>
+                <div>
+                  <label
+                    htmlFor='firstName'
+                    className='block text-sm font-medium text-yellow-200 mb-2'
+                  >
+                    First Name <span className='text-yellow-400'>*</span>
+                  </label>
+                  <div className='relative'>
+                    <div className='absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none'>
+                      <i className='fa-solid fa-user text-yellow-400'></i>
+                    </div>
+                    <input
+                      type='text'
+                      id='firstName'
+                      value={formData.firstName}
+                      onChange={(e) =>
+                        setFormData({ ...formData, firstName: e.target.value })
+                      }
+                      required
+                      autoComplete='given-name'
+                      className='
+                        w-full pl-12 pr-4 py-3 rounded-lg
+                        bg-navy-900/80 border-2 border-yellow-500/30
+                        text-white placeholder-navy-500
+                        focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500
+                        transition-colors
+                        '
+                      placeholder='Juan'
+                    />
                   </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor='middleInitial'
+                    className='block text-sm font-medium text-yellow-200 mb-2'
+                  >
+                    M.I.
+                  </label>
                   <input
                     type='text'
-                    id='name'
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
+                    id='middleInitial'
+                    value={formData.middleInitial}
+                    onChange={(e) =>
+                      setFormData({ ...formData, middleInitial: e.target.value })
+                    }
+                    // Two, so typing "C." is not cut off mid-word. The stored
+                    // value is normalised to a single letter.
+                    maxLength={2}
                     className='
-                      w-full pl-12 pr-4 py-3 rounded-lg
+                      w-full px-2 py-3 rounded-lg text-center
                       bg-navy-900/80 border-2 border-yellow-500/30
                       text-white placeholder-navy-500
                       focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500
                       transition-colors
                       '
-                    placeholder='Juan C. Dela Cruz'
+                    placeholder='C.'
                   />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor='lastName'
+                    className='block text-sm font-medium text-yellow-200 mb-2'
+                  >
+                    Last Name <span className='text-yellow-400'>*</span>
+                  </label>
+                  <div className='relative'>
+                    <div className='absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none'>
+                      <i className='fa-solid fa-user text-yellow-400'></i>
+                    </div>
+                    <input
+                      type='text'
+                      id='lastName'
+                      value={formData.lastName}
+                      onChange={(e) =>
+                        setFormData({ ...formData, lastName: e.target.value })
+                      }
+                      required
+                      autoComplete='family-name'
+                      className='
+                        w-full pl-12 pr-4 py-3 rounded-lg
+                        bg-navy-900/80 border-2 border-yellow-500/30
+                        text-white placeholder-navy-500
+                        focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500
+                        transition-colors
+                        '
+                      placeholder='Dela Cruz'
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -470,59 +558,7 @@ export default function RegisterPage() {
                 )}
               </div>
 
-              {/* Assigned room. Not saved to the account: the new schema has no
-                destination column on `users`. It is held for this session and
-                written to the visitor's first attendance record when they check
-                in, which is where a room belongs. */}
-              <div>
-                <label
-                  htmlFor='destination'
-                  className='block text-sm font-medium text-yellow-200 mb-2'
-                >
-                  Assigned room
-                </label>
-                <div className='relative'>
-                  <div className='absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none'>
-                    <i className='fa-solid fa-location-dot text-yellow-400'></i>
-                  </div>
-                  <select
-                    id='destination'
-                    value={formData.destination}
-                    onChange={(e) => {
-                      // A deliberate choice: stop deriving the room from the course.
-                      roomTouched.current = true;
-                      setFormData({ ...formData, destination: e.target.value });
-                    }}
-                    className='
-                      w-full pl-12 pr-4 py-3 rounded-lg appearance-none
-                      bg-navy-900/80 border-2 border-yellow-500/30
-                      text-white placeholder-navy-500
-                      focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500
-                      transition-colors
-                      '
-                  >
-                    <option value=''>No assigned room</option>
-                    {/* Options come from the `rooms` table, not a hardcoded list, so
-                        a room added in /admin/rooms is selectable here immediately.
-                        The VALUE is the room number because that is what
-                        `getRoomByNumber` resolves at check-in; the LABEL is the room
-                        name, which is what a person recognises. */}
-                    {rooms.map((room) => (
-                      <option key={room.id} value={room.roomNumber} className='bg-navy-900'>
-                        {room.name} ({room.roomNumber})
-                      </option>
-                    ))}
-                  </select>
-                  <i className='fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-navy-400 text-xs pointer-events-none'></i>
-                </div>
-                <p className='text-navy-400 text-xs mt-2'>
-                  Filled in from your course. You can change it. Recorded on your
-                  first check-in; you can go to any room later by scanning its
-                  door code.
-                </p>
-              </div>
-
-              {/* Purpose picker. Also per visit, not per person: the schema puts
+        	  {/* Purpose picker. Also per visit, not per person: the schema puts
                   purpose_id on clock_in_records so a visitor can attend a Meeting
                   one day and an Orientation the next. This seeds the first visit. */}
               <div>
@@ -566,10 +602,6 @@ export default function RegisterPage() {
                   </select>
                   <i className='fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-navy-400 text-xs pointer-events-none'></i>
                 </div>
-                <p className='text-navy-400 text-xs mt-2'>
-                  Applied to your first check-in, and you can pick a different
-                  reason on later visits.
-                </p>
               </div>
 
               {/* Visitor profile. Optional, and asked here so the front desk has it before the
@@ -577,9 +609,6 @@ export default function RegisterPage() {
               <div className='rounded-lg border border-navy-700 bg-navy-950/40 p-4 space-y-4'>
                 <p className='text-sm font-semibold text-yellow-200'>
                   About your visit
-                  <span className='ml-2 text-xs font-normal text-navy-400'>
-                    all optional
-                  </span>
                 </p>
 
                 <div>
@@ -662,6 +691,45 @@ export default function RegisterPage() {
                     </div>
                     <i className='fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-navy-400 text-xs pointer-events-none'></i>
                   </div>
+		
+		  <div>
+                <label
+                  htmlFor='destination'
+                  className='block text-sm font-medium text-yellow-200 mb-2'
+                >
+                  Assigned room
+                </label>
+                <div className='relative'>
+                  <div className='absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none'>
+                    <i className='fa-solid fa-location-dot text-yellow-400'></i>
+                  </div>
+                  <select
+                    id='destination'
+                    value={formData.destination}
+                    disabled
+		    className='
+                      w-full pl-12 pr-4 py-3 rounded-lg appearance-none
+                      bg-navy-900/80 border-2 border-yellow-500/30
+                      text-white placeholder-navy-500
+                      transition-colors
+                      disabled:cursor-not-allowed disabled:opacity-70
+                      '
+                  >
+                    <option value=''>No assigned room</option>
+                    {/* The options still come from the `rooms` table, so a room added
+                        in /admin/rooms shows up here immediately. The VALUE is the room
+                        number because that is what `getRoomByNumber` resolves at
+                        check-in; the LABEL is the room name, which is what a person
+                        recognises. Read-only: the room follows the course. */}
+                    {rooms.map((room) => (
+                      <option key={room.id} value={room.roomNumber} className='bg-navy-900'>
+                        {room.name} ({room.roomNumber})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
                 </div>
 
                 {/* Two-up on wider screens, stacked on a phone. */}
@@ -749,7 +817,18 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              {/* Password Field */}
+              {/*
+                Password fields - commented out, not deleted.
+
+                Visitors no longer set a password: they sign in through /verify
+                with their first and last name and their course. Supabase still
+                needs a password to create the auth user, so handleSubmit
+                generates a throwaway (see `generatedPassword`). To restore these
+                fields, uncomment this block and the two password checks in
+                handleSubmit.
+
+              Password Field
+
               <div>
                 <label
                   htmlFor='password'
@@ -781,7 +860,8 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              {/* Confirm Password Field */}
+              Confirm Password Field
+
               <div>
                 <label
                   htmlFor='confirmPassword'
@@ -815,6 +895,7 @@ export default function RegisterPage() {
                   />
                 </div>
               </div>
+              */}
 
               {/* Submit Button. Sticky on a phone: the form is long and
                   the page is centred, so a plain button can sit far below
@@ -849,12 +930,12 @@ export default function RegisterPage() {
 
             {/* Login Link */}
             <div className='mt-6 text-center text-sm text-navy-300'>
-              Already have an account?{' '}
+              Already registered?{' '}
               <Link
-                href='/login'
+                href='/verify'
                 className='text-yellow-400 hover:text-yellow-300 font-semibold transition-colors'
               >
-                Sign in
+                Verify
               </Link>
             </div>
           </div>
