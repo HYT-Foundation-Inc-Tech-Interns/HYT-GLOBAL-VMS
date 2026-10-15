@@ -179,6 +179,17 @@ export default function KioskStationView() {
   return (
     <div className='w-full min-h-full p-8'>
       <div className='max-w-7xl mx-auto'>
+        {/* Back to the dashboard, mirroring the back link on the other admin
+            sub-pages (/admin/rooms, /admin/records, /admin/users). The station
+            is reached from the dashboard tile, so that is where it returns to. */}
+        <Link
+          href='/admin'
+          className='inline-flex items-center gap-2 text-navy-300 hover:text-navy-200 transition-colors mb-4'
+        >
+          <i className='fa-solid fa-arrow-left'></i>
+          <span>Back to Dashboard</span>
+        </Link>
+
         {/* Page title. No status badge here: it used to read "Station Active", but
             nothing ever set it inactive, so it was decoration rather than
             information. The live counts below carry the real status. */}
