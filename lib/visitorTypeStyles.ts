@@ -5,7 +5,7 @@
  * same label wears the same colour in both places. Unknown labels fall back
  * to the neutral navy chip.
  *
- * The labels come from `supabase/migrations/20260101000004_visitor_profiles.sql`
+ * The labels come from the `visitor_types` seed in `supabase/setup.sql`
  * (Trainee, Trainer, VIP, Guest, Contractor, Intern, Observer). New rows in
  * `visitor_types` simply miss the colour map and render neutral.
  */

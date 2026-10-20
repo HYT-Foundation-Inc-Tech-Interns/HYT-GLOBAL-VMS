@@ -75,8 +75,8 @@ async function requireAdmin(
       ok: false,
       status: 403,
       error:
-        'Could not read your user profile. The admin user-management RLS ' +
-        'policies may not be applied yet (see SUPABASE_SETUP.md).',
+        'Could not read your user profile. The database setup may not have ' +
+        'been applied yet (see supabase/setup.sql).',
     };
   }
 

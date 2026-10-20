@@ -55,9 +55,9 @@ export interface Course {
  *
  * The `purposes` table is readable only by signed-in users, but the
  * registration form needs the list before anyone signs in - so a brand-new
- * visitor would see an empty picker until the registration-fix migration
- * ("purposes readable by anyone") is applied. These labels are fixed by
- * `supabase/seed.sql`; once the fetch succeeds they are replaced by the real
+ * visitor would see an empty picker until the setup script has been applied
+ * ("purposes readable by anyone"). These labels are fixed by
+ * `supabase/setup.sql`; once the fetch succeeds they are replaced by the real
  * rows, so the fallback is a safety net rather than a second source of truth.
  *
  * `id` is a readable placeholder, not a UUID: a purpose chosen from the
@@ -269,12 +269,12 @@ export const useRoomsStore = create<RoomsState>((set, get) => ({
         .order('label');
 
       if (error) {
-        // Expected before the registration-fix migration is applied, and also
+        // Expected before the setup script has been applied, and also
         // for anyone not yet signed in. Fall back to the seeded labels so the
         // pickers still render instead of silently appearing empty.
         console.warn(
           'Could not load purposes from the database; using the built-in list. ' +
-            'Apply supabase/migrations/20260101000002_registration_fix.sql to fix this.',
+            'Apply supabase/setup.sql to fix this.',
           error
         );
         set({ purposes: FALLBACK_PURPOSES, purposesLoading: false });
@@ -316,12 +316,12 @@ export const useRoomsStore = create<RoomsState>((set, get) => ({
         // Loud on purpose. The fallback list keeps the picker usable, but
         // nothing here warns that the real lookup is missing, so an admin
         // could classify visitors against a hardcoded list and never realise
-        // migration 004 was never applied.
+        // the visitor_types table was missing.
         console.error(
           'Could not load visitor_types from the database (' +
             error.message +
             '). Using the built-in list. Apply ' +
-            'supabase/migrations/20260101000004_visitor_profiles.sql — until then ' +
+            'supabase/setup.sql — until then ' +
             'visitor types are not persisted, and edits to type/company/host/' +
             'phone/expiry will fail to save.'
         );
@@ -360,12 +360,12 @@ export const useRoomsStore = create<RoomsState>((set, get) => ({
         .order('label');
 
       if (error) {
-        // Expected before migration 20260101000011 is applied, and also for
+        // Expected before the setup script has been applied, and also for
         // anyone not yet signed in. Fall back to the seeded labels so the
         // picker still renders instead of silently appearing empty.
         console.warn(
           'Could not load courses from the database; using the built-in list. ' +
-            'Apply supabase/migrations/20260101000011_courses.sql to fix this.',
+            'Apply supabase/setup.sql to fix this.',
           error
         );
         set({ courses: FALLBACK_COURSES, coursesLoading: false });

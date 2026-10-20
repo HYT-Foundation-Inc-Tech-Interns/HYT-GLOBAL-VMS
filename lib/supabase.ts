@@ -15,8 +15,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // INSERT fails outright).
 //
 // Leaving it was worse than having nothing: it contradicted the invariants in
-// IMPLEMENTATION_PROMPT.md §5 and would have led the next reader to write code
-// against a schema that does not exist.
+// the schema (see supabase/SCHEMA.md) and would have led the next reader to
+// write code against a schema that does not exist.
 //
 // If type-safe queries are wanted later, generate them from the live schema
 // rather than hand-maintaining them, so they cannot drift:

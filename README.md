@@ -70,23 +70,28 @@ cp .env.example .env.local
 
 ### Database
 
-The schema is five tables: `rooms`, `purposes`, `users`, `clock_in_records` and
-`room_visits`. It ships as ordered migrations — run them in the Supabase SQL
-editor, **in numeric order** (the later files depend on the earlier ones):
+Seven tables: `rooms`, `purposes`, `visitor_types`, `courses`, `users`,
+`clock_in_records` and `room_visits`.
 
-1. `supabase/migrations/20260101000001_full_schema.sql` — tables, RLS, triggers
-2. `supabase/migrations/20260101000002_registration_fix.sql` — self-registration
-3. `supabase/migrations/20260101000003_retire_trainee_roles.sql` — folds the unused `trainer`/`trainee` roles into `visitor`
-4. `supabase/migrations/20260101000004_visitor_profiles.sql` — classification and profile columns
-5. `supabase/migrations/20260101000005_service_role_grants.sql` — grants for admin create/archive
-6. `supabase/migrations/20260101000006_default_pass_expiry.sql` — new accounts default to a pass that expires at end of today
-7. `supabase/migrations/20260101000007_pending_visit_intent.sql` — `pending_room_id` / `pending_purpose_id`, so an admin-assigned room and purpose survive until check-in
-8. `supabase/migrations/20260101000008_integrity_and_least_privilege.sql` — one open attendance row per user, and column-scoped `UPDATE` so a visit's timestamps and room cannot be rewritten after the fact
-9. `supabase/migrations/20260101000009_rooms_readable_by_anyone.sql` — lets the register form's room picker load before sign-in
-10. `supabase/seed.sql` — the 11 rooms and the visit purposes
+Setting up a database is **one step**:
+
+1. Create a Supabase project.
+2. Open **SQL Editor → New query**.
+3. Paste all of [`supabase/setup.sql`](./supabase/setup.sql) and run it.
+
+That file builds the whole schema — tables, indexes, triggers, row-level
+security, policies, grants, the two RPC functions, and the seed data (rooms,
+purposes, visitor types, courses). It is idempotent, so re-running it is safe.
+
+Then create your first admin — instructions are at the bottom of `setup.sql`:
+
+```sql
+-- after adding the user in Authentication -> Users
+UPDATE public.users SET role = 'admin' WHERE email = 'admin@hyt.com';
+```
 
 This is a **fresh** schema, not an upgrade path: it creates clean tables rather
-than `ALTER`ing the old ones, so there is no data migration to run.
+than `ALTER`ing old ones, so there is no data migration to run.
 
 > **Old-format room posters still work.** Codes printed as
 > `HYT-KIOSK-01-CHECKIN-STATION:<ROOM>` are read as the room they name, so a door
@@ -259,8 +264,8 @@ hooks/                      # First-person + mobile controls, role guard, profil
 lib/                        # Supabase client, wayfinding registry, WebGL check
 store/                      # Zustand: auth, users, records, roomPresence, rooms, clockIn, theme
 scripts/                    # next-with-canonical-path.js (Windows casing fix)
-supabase/migrations/        # Ordered SQL migrations
-supabase/seed.sql           # The 11 rooms + purposes
+supabase/setup.sql           # The whole database in one file - paste and run
+supabase/SCHEMA.md           # ERD and design notes
 public/                     # Static assets
 ```
 

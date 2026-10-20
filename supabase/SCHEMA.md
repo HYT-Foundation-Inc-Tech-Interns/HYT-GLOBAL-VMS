@@ -1,7 +1,11 @@
 # Database Schema
 
-Five tables. Two of them record visits, and they deliberately answer different
+Seven tables. Two of them record visits, and they deliberately answer different
 questions.
+
+Three are small lookup tables that feed the forms: `purposes` (why someone is
+here), `visitor_types` (how they relate to the building) and `courses` (which
+programme they are enrolled in, and which room that programme uses).
 
 ```
                        ┌──────────────┐
@@ -126,29 +130,30 @@ let anyone edit their own `time_in` — falsifiable attendance.
 
 ## Applying it
 
-Fresh database, in this order:
+One file, one paste:
 
-1. `supabase/migrations/20260101000001_full_schema.sql` — tables, indexes, triggers, RLS
-2. `supabase/migrations/20260101000002_registration_fix.sql` … through
-   `20260101000009_rooms_readable_by_anyone.sql`, in numeric order
-3. `supabase/seed.sql` — the 11 rooms
+1. Create a Supabase project.
+2. Dashboard → **SQL Editor → New query**.
+3. Paste all of [`setup.sql`](./setup.sql) and run it.
 
-The full annotated list is in [../README.md](../README.md) under Database.
+`setup.sql` builds everything in this document — tables, indexes, triggers, RLS,
+policies, grants, the `verify_visitor` and `orientation_status_for` functions,
+and the seed data. It is idempotent, so re-running it changes nothing.
 
 Then create your first admin in Supabase Auth (Authentication → Users → Add
-User) and insert the matching profile row:
+User) and promote the profile row the trigger already created:
 
 ```sql
-INSERT INTO public.users (id, email, name, role)
-VALUES ('AUTH-USER-UUID', 'admin@hyt.com', 'Admin', 'admin');
+UPDATE public.users SET role = 'admin' WHERE email = 'admin@hyt.com';
 ```
-
-> This schema **replaces** the original tables. The app has not been updated to
-> match yet — see `IMPLEMENTATION_PROMPT.md` at the repo root.
 
 ## Still to decide
 
-- **Room display names.** Seeded as "Room 301", "Tech Room 201" etc. Update
-  `supabase/seed.sql` once the real names are known.
+- **Room display names.** Seeded as "Room 301", "Tech Room 201" etc. Update the
+  rooms `INSERT` in [`setup.sql`](./setup.sql) once the real names are known.
+- **Course → room allocation.** The `UPDATE ... FROM (VALUES ...)` block near
+  the end of `setup.sql` decides which room each course's students go to.
+  Hilot and Massage are currently unmapped because no room 101 exists in the
+  seed.
 - **Roof access.** `Roofdeck` is a room like any other. If it should only be
   bookable, that likely needs a booking table.

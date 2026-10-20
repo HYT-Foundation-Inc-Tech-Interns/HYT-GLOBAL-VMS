@@ -168,7 +168,8 @@ function ordinal(n: number): string {
 /**
  * Every room in the building, in building order.
  *
- * This mirrors `supabase/seed.sql`: room numbers and floors are authoritative,
+ * This mirrors the rooms seed in `supabase/setup.sql`: room numbers and floors
+ * are authoritative,
  * display names are placeholders until the institute confirms them. The list is
  * duplicated here rather than read from the database because the 3D route scene
  * needs waypoints synchronously at module scope - it cannot await a fetch before

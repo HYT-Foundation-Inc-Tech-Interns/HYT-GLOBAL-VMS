@@ -118,7 +118,7 @@ store/                  Zustand state: auth, users, records, roomPresence, clock
 lib/wayfinding.ts       QR registry + parser — the single source of truth for rooms
 lib/supabase.ts         Supabase client
 hooks/                  First-person/mobile controls, role guard, profile sync
-supabase/migrations/    SQL migrations
+supabase/setup.sql      Whole database in one file — paste into the SQL editor
 scripts/                next-with-canonical-path.js (Windows path-casing fix)
 ```
 
@@ -139,13 +139,12 @@ else touches the `room_presence` table.
 
 ## 6. Setting it up
 
-Full instructions are in [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) and
-[README.md](./README.md). The short version:
+Full instructions are in [README.md](./README.md). The short version:
 
 ```bash
 npm install
 cp .env.example .env.local    # then fill in your Supabase keys
-# Run the SQL from SUPABASE_SETUP.md in the Supabase SQL editor
+# Paste supabase/setup.sql into the Supabase SQL editor and run it
 npm run dev
 ```
 
@@ -209,11 +208,9 @@ variables into new builds.
 
 Worth knowing before you rely on this:
 
-- **The database schema is being replaced.** The app still writes to the old
-  `room_presence` table and the old `clock_in_records` columns. The new schema is
-  in `supabase/migrations/20260101000001_full_schema.sql` (see
-  [supabase/SCHEMA.md](./supabase/SCHEMA.md)) but the code has not been updated
-  to match yet — see `IMPLEMENTATION_PROMPT.md`.
+- **Database setup is one file.** `supabase/setup.sql` builds the entire schema
+  and seeds it. See [supabase/SCHEMA.md](./supabase/SCHEMA.md) for the ERD and
+  design notes. The code and the schema match.
 - **Old-format room posters still work.** Codes printed as
   `HYT-KIOSK-01-CHECKIN-STATION:<ROOM>` resolve to the room they name, so a door
   scan records presence and never touches attendance. Reprinting in the
