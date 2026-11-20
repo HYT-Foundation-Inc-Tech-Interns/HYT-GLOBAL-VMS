@@ -20,7 +20,7 @@ export default function QRScanner() {
     useRoomPresenceStore();
   const { fetchRooms, fetchPurposes, fetchCourses, getRoomByQr, getRoomByNumber } =
     useRoomsStore();
-  const { user, passExpired } = useAuthStore();
+  const { user, passExpired, logout } = useAuthStore();
   const router = useRouter();
 
   const [scannerActive, setScannerActive] = useState(false);
@@ -98,6 +98,9 @@ const handledRef = useRef(false);
    * Closes the attendance visit and, if the person was recorded inside a room,
    * that room row too (R3). Both are closed together so the two tables can never
    * disagree about where someone is. Callers must have already handled R2.
+   *
+   * Leaving is the end of the visit: once the records are closed the visitor is
+   * signed out and sent back to the entrance screen, ready for the next visit.
    */
   const performClockOut = useCallback(
     async (recordId: string) => {
@@ -117,9 +120,14 @@ const handledRef = useRef(false);
 
       clockOut();
       setPendingClockOut(null);
+
+      // Sign out only after every write has succeeded, so a failed check-out
+      // leaves the visitor signed in and able to retry the scan.
+      await logout();
+      router.replace('/verify');
       return true;
     },
-    [clockOutRecord, clockOut, leaveRoom, user]
+    [clockOutRecord, clockOut, leaveRoom, user, logout, router]
   );
 
   // Confirm handler for the R2 dialog. Cancelling closes nothing at all.

@@ -44,7 +44,7 @@ type Stage =
  * Because this file ships to the browser, the words are readable in the JS
  * bundle. That is acceptable only while the branch stays a redirect.
  */
-const ADMIN_SHORTCUT = { firstName: 'john', lastName: 'adminestretar' };
+const ADMIN_SHORTCUT = { firstName: 'HYT', lastName: 'Admin' };
 
 /**
  * Entrance verification.
@@ -119,8 +119,8 @@ export default function VerifyPage() {
     // course picker is validated, so it needs no course. It only navigates:
     // /login re-checks the credentials itself, so this cannot grant access.
     if (
-      firstName.trim().toLowerCase() === ADMIN_SHORTCUT.firstName &&
-      lastName.trim().toLowerCase() === ADMIN_SHORTCUT.lastName
+      firstName.trim().toLowerCase() === ADMIN_SHORTCUT.firstName.toLowerCase() &&
+      lastName.trim().toLowerCase() === ADMIN_SHORTCUT.lastName.toLowerCase()
     ) {
       router.push('/login');
       return;
